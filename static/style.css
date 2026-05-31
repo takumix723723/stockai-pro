@@ -103,28 +103,35 @@ body {
   font-size: 0.95rem;
 }
 
-/* インストール案内（SBI風・iPhone Safari ブラウザのみ） */
+/* インストール案内（SBI風モーダル + ヘッダーボタン） */
+.install-header-btn {
+  padding: 6px 12px;
+  margin-right: 4px;
+  border: 1px solid rgba(74, 111, 165, 0.55);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(59, 100, 160, 0.95), rgba(45, 78, 130, 0.95));
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.72rem;
+  cursor: pointer;
+  white-space: nowrap;
+  min-height: 32px;
+  -webkit-tap-highlight-color: transparent;
+  flex-shrink: 0;
+}
+
+.install-header-btn:active {
+  opacity: 0.88;
+  transform: scale(0.98);
+}
+
+html.is-standalone .install-header-btn {
+  display: none !important;
+}
+
+/* 旧バナー（非表示） */
 .install-guide-bar {
-  position: fixed;
-  bottom: calc(var(--bottom-nav-total) + 14px);
-  left: max(10px, env(safe-area-inset-left, 0px));
-  right: max(10px, env(safe-area-inset-right, 0px));
-  max-width: var(--content-max);
-  margin: 0 auto;
-  padding: 8px 10px 8px 12px;
-  border-radius: 12px;
-  z-index: 150;
-  display: flex;
-  flex-wrap: nowrap;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.74rem;
-  line-height: 1.3;
-  background: rgba(14, 20, 36, 0.96);
-  border: 1px solid rgba(100, 130, 180, 0.28);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.42);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  display: none !important;
 }
 
 html.is-standalone .install-guide-bar,
@@ -205,18 +212,19 @@ html.is-standalone .install-guide-modal {
   position: relative;
   width: 100%;
   max-width: 420px;
-  margin: 0 12px calc(var(--bottom-nav-total) + 8px);
-  padding: 18px 16px 16px;
-  border-radius: 16px;
+  margin: 0 12px calc(var(--bottom-nav-total) + 12px);
+  padding: 20px 18px 16px;
+  border-radius: 18px;
   background: rgba(16, 22, 38, 0.98);
-  border: 1px solid rgba(100, 130, 180, 0.25);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(100, 130, 180, 0.28);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
 }
 
 .install-guide-title {
   font-size: 1.05rem;
   font-weight: 700;
-  margin-bottom: 6px;
+  margin-bottom: 14px;
+  line-height: 1.45;
   color: var(--text);
 }
 
@@ -274,6 +282,41 @@ html.is-standalone .install-guide-modal {
   vertical-align: middle;
   margin: 0 2px;
   color: var(--accent);
+}
+
+.install-guide-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.install-guide-btn-secondary,
+.install-guide-btn-primary {
+  flex: 1;
+  min-height: 44px;
+  border-radius: 10px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.install-guide-btn-secondary {
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+}
+
+.install-guide-btn-primary {
+  border: none;
+  background: linear-gradient(180deg, rgba(59, 100, 160, 0.98), rgba(45, 78, 130, 0.98));
+  color: #fff;
+}
+
+.install-guide-btn-secondary:active,
+.install-guide-btn-primary:active {
+  opacity: 0.88;
+  transform: scale(0.99);
 }
 
 .install-guide-close {

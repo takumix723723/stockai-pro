@@ -34,6 +34,7 @@
         <span class="logo-text">StockAI <span class="logo-pro">Pro</span></span>
       </div>
       <div class="header-right">
+        <button type="button" class="install-header-btn" id="pwaInstallBtn" hidden>インストール</button>
         <button type="button" class="icon-btn notif-btn" id="notifToggle" title="通知">
           <span class="notif-icon">🔔</span>
           <span class="notif-badge" id="notifBadge">0</span>
@@ -292,6 +293,8 @@
       const urlTab = new URLSearchParams(window.location.search).get('tab');
       if (urlTab && ['watchlist', 'ranking'].includes(urlTab)) {
         switchTab(urlTab);
+      } else {
+        window.PwaInstall?.updateVisibility(true);
       }
     }
 
@@ -525,6 +528,7 @@
       });
       ensureTabData(name);
       window.scrollTo(0, 0);
+      window.PwaInstall?.updateVisibility(name === 'home');
     }
 
     function updateWatchlistBadge() {
