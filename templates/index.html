@@ -90,15 +90,13 @@
     </div>
   </div>
 
-  <!-- メインタブ -->
+  <!-- メインタブ（PC用・ホーム/急騰急落のみ） -->
   <nav class="main-tabs">
     <button type="button" class="tab-btn active" data-tab="home">ホーム</button>
     <button type="button" class="tab-btn" data-tab="ranking">急騰・急落</button>
-    <button type="button" class="tab-btn" data-tab="buried">埋もれ株</button>
-    <button type="button" class="tab-btn" data-tab="fund">ファンド</button>
-    <button type="button" class="tab-btn" data-tab="market">市場AI</button>
   </nav>
 
+  <div id="mainTabArea">
   <!-- ホームタブ -->
   <div class="tab-content active" id="tab-home">
     <div class="section-title">📊 今日の市場テーマ</div>
@@ -127,6 +125,25 @@
       </div>
     </div>
 
+    <div class="section-title">🔎 銘柄発掘メニュー</div>
+    <div class="home-menu-grid">
+      <button type="button" class="home-menu-card" data-panel="buried">
+        <span class="home-menu-icon">💎</span>
+        <span class="home-menu-label">埋もれ株発掘</span>
+        <span class="home-menu-desc">AIスコアで有望株</span>
+      </button>
+      <button type="button" class="home-menu-card" data-panel="fund">
+        <span class="home-menu-icon">🏦</span>
+        <span class="home-menu-label">ファンド狙い</span>
+        <span class="home-menu-desc">機関投資家の視点</span>
+      </button>
+      <button type="button" class="home-menu-card" data-panel="market">
+        <span class="home-menu-icon">🌐</span>
+        <span class="home-menu-label">市場AI分析</span>
+        <span class="home-menu-desc">指数・テーマ総合</span>
+      </button>
+    </div>
+
     <div class="section-title">🤖 市場AI要約</div>
     <div class="ai-summary-card" id="aiSummaryCard">
       <div class="skeleton-block skeleton-lg"></div>
@@ -134,42 +151,10 @@
       <div class="skeleton-line skeleton-sm"></div>
     </div>
   </div>
-
-  <!-- 急騰急落タブ -->
-  <div class="tab-content" id="tab-ranking">
-    <div class="section-title">📈 本日の急騰銘柄</div>
-    <div class="ranking-list" id="gainersList">
-      <div class="tab-idle-hint">急騰・急落タブを開くと表示されます</div>
-    </div>
-    <div class="section-title mt-16">📉 本日の急落銘柄</div>
-    <div class="ranking-list" id="losersList"></div>
   </div>
 
-  <!-- 埋もれ株タブ -->
-  <div class="tab-content" id="tab-buried">
-    <div class="section-title">💎 埋もれ銘柄発掘AI</div>
-    <div class="buried-desc">AIがまだ市場に知られていない有望銘柄を独自スコアで発掘</div>
-    <div class="buried-list" id="buriedList">
-      <div class="tab-idle-hint">発掘タブを開くと表示されます</div>
-    </div>
-  </div>
-
-  <!-- ファンドタブ -->
-  <div class="tab-content" id="tab-fund">
-    <div class="section-title">🏦 ファンド先回りスクリーナー</div>
-    <div class="buried-desc">ファンド・アクティビストが好む条件の銘柄を先回り発掘</div>
-    <div class="fund-list" id="fundList">
-      <div class="tab-idle-hint">ファンドタブを開くと表示されます</div>
-    </div>
-  </div>
-
-  <!-- 市場AIタブ -->
-  <div class="tab-content" id="tab-market">
-    <div class="section-title">🌐 市場全体AI分析</div>
-    <div class="market-ai-content" id="marketAiContent">
-      <div class="tab-idle-hint">市場AIタブを開くと表示されます</div>
-    </div>
-  </div>
+  <!-- サブ画面（発掘・ファンド・市場AI）動的生成 -->
+  <div id="subPanelHost" class="sub-panel-host"></div>
 
   <!-- ウォッチリスト追加モーダル -->
   <div class="modal-overlay" id="watchModal" style="display: none;">
@@ -183,8 +168,8 @@
     </div>
   </div>
 
-  <!-- ボトムナビ -->
-  <nav class="bottom-nav">
+  <!-- ボトムナビ（最小構成: ホーム / 急騰急落） -->
+  <nav class="bottom-nav bottom-nav-minimal">
     <a href="/" class="bn-item active" data-tab-nav="home">
       <span class="bn-icon">🏠</span>
       <span class="bn-label">ホーム</span>
@@ -192,18 +177,6 @@
     <a href="#" class="bn-item" data-tab-nav="ranking">
       <span class="bn-icon">📊</span>
       <span class="bn-label">急騰急落</span>
-    </a>
-    <a href="#" class="bn-item" data-tab-nav="buried">
-      <span class="bn-icon">💎</span>
-      <span class="bn-label">発掘</span>
-    </a>
-    <a href="#" class="bn-item" data-tab-nav="fund">
-      <span class="bn-icon">🏦</span>
-      <span class="bn-label">ファンド</span>
-    </a>
-    <a href="#" class="bn-item" data-tab-nav="market">
-      <span class="bn-icon">🌐</span>
-      <span class="bn-label">市場AI</span>
     </a>
   </nav>
 
@@ -214,9 +187,37 @@
     });
 
     const watchCache = {};
-    const tabLoaded = { home: false, ranking: false, buried: false, fund: false, market: false };
-    const tabLoading = { home: false, ranking: false, buried: false, fund: false, market: false };
+    const tabLoaded = { home: false, ranking: false };
+    const tabLoading = { home: false, ranking: false };
+    const panelLoaded = { buried: false, fund: false, market: false };
+    const panelLoading = { buried: false, fund: false, market: false };
     let notifLoaded = false;
+    let currentMainTab = 'home';
+    let activeSubPanel = null;
+
+    const SUB_PANEL_META = {
+      buried: {
+        title: '埋もれ株発掘',
+        icon: '💎',
+        desc: 'AIがまだ市場に知られていない有望銘柄を独自スコアで発掘',
+        bodyClass: 'buried-list',
+        listId: 'buriedList',
+      },
+      fund: {
+        title: 'ファンド先回り',
+        icon: '🏦',
+        desc: 'ファンド・アクティビストが好む条件の銘柄を先回り発掘',
+        bodyClass: 'fund-list',
+        listId: 'fundList',
+      },
+      market: {
+        title: '市場AI分析',
+        icon: '🌐',
+        desc: '指数・テーマ・AI要約をまとめて確認',
+        bodyClass: 'market-ai-content',
+        listId: 'marketAiContent',
+      },
+    };
 
     function skeletonCards(n) {
       return Array.from({ length: n }, () => '<div class="skeleton-card-row"></div>').join('');
@@ -253,6 +254,10 @@
           e.preventDefault();
           switchTab(item.dataset.tabNav);
         });
+      });
+
+      document.querySelectorAll('.home-menu-card[data-panel]').forEach((card) => {
+        card.addEventListener('click', () => openSubPanel(card.dataset.panel));
       });
 
       document.getElementById('notifToggle').addEventListener('click', toggleNotifPanel);
@@ -292,25 +297,91 @@
       if (tabLoaded[name] || tabLoading[name]) return;
       tabLoading[name] = true;
       const done = () => { tabLoading[name] = false; tabLoaded[name] = true; };
-      switch (name) {
-        case 'home':
-          loadHomeContent().finally(done);
-          break;
-        case 'ranking':
-          loadRanking().finally(done);
-          break;
-        case 'buried':
-          loadBuried().finally(done);
-          break;
-        case 'fund':
-          loadFund().finally(done);
-          break;
-        case 'market':
-          loadMarketAi().finally(done);
-          break;
-        default:
-          tabLoading[name] = false;
+      if (name === 'home') {
+        loadHomeContent().finally(done);
+      } else if (name === 'ranking') {
+        loadRanking().finally(done);
+      } else {
+        tabLoading[name] = false;
       }
+    }
+
+    function ensureRankingTabDom() {
+      if (document.getElementById('tab-ranking')) return;
+      const area = document.getElementById('mainTabArea');
+      const tab = document.createElement('div');
+      tab.className = 'tab-content';
+      tab.id = 'tab-ranking';
+      tab.innerHTML =
+        '<div class="section-title">📈 本日の急騰銘柄</div>' +
+        '<div class="ranking-list" id="gainersList"></div>' +
+        '<div class="section-title mt-16">📉 本日の急落銘柄</div>' +
+        '<div class="ranking-list" id="losersList"></div>';
+      area.appendChild(tab);
+    }
+
+    function destroyRankingTab() {
+      const tab = document.getElementById('tab-ranking');
+      if (tab) tab.remove();
+      tabLoaded.ranking = false;
+      tabLoading.ranking = false;
+    }
+
+    function openSubPanel(name) {
+      const meta = SUB_PANEL_META[name];
+      if (!meta) return;
+
+      closeSubPanel(false);
+      activeSubPanel = name;
+      panelLoaded[name] = false;
+      panelLoading[name] = false;
+
+      const host = document.getElementById('subPanelHost');
+      host.classList.add('is-open');
+      host.innerHTML =
+        '<div class="sub-panel">' +
+        '<div class="sub-panel-header">' +
+        '<button type="button" class="sub-panel-back" id="subPanelBack">← ホーム</button>' +
+        `<h2 class="sub-panel-title">${meta.icon} ${escapeHtml(meta.title)}</h2>` +
+        '</div>' +
+        `<p class="sub-panel-desc">${escapeHtml(meta.desc)}</p>` +
+        `<div class="${meta.bodyClass} sub-panel-body" id="${meta.listId}">` +
+        `<div class="skeleton-list">${skeletonCards(name === 'market' ? 4 : 3)}</div>` +
+        '</div></div>';
+
+      document.body.classList.add('sub-panel-open');
+      document.getElementById('mainTabArea').classList.add('is-behind');
+      document.getElementById('subPanelBack').addEventListener('click', closeSubPanel);
+      window.scrollTo(0, 0);
+      loadSubPanelData(name);
+    }
+    window.openSubPanel = openSubPanel;
+
+    function closeSubPanel(resetNav) {
+      const host = document.getElementById('subPanelHost');
+      if (activeSubPanel) {
+        panelLoaded[activeSubPanel] = false;
+        panelLoading[activeSubPanel] = false;
+        activeSubPanel = null;
+      }
+      host.innerHTML = '';
+      host.classList.remove('is-open');
+      document.body.classList.remove('sub-panel-open');
+      document.getElementById('mainTabArea')?.classList.remove('is-behind');
+      if (resetNav !== false) {
+        switchTab('home', { fromSubPanel: true });
+      }
+    }
+    window.closeSubPanel = closeSubPanel;
+
+    function loadSubPanelData(name) {
+      if (panelLoaded[name] || panelLoading[name]) return;
+      panelLoading[name] = true;
+      const done = () => { panelLoading[name] = false; panelLoaded[name] = true; };
+      if (name === 'buried') loadBuried().finally(done);
+      else if (name === 'fund') loadFund().finally(done);
+      else if (name === 'market') loadMarketAi().finally(done);
+      else panelLoading[name] = false;
     }
 
     function ensureNotifications() {
@@ -336,11 +407,27 @@
     }
     window.goToStock = goToStock;
 
-    function switchTab(name) {
+    function switchTab(name, opts) {
+      if (name !== 'home' && name !== 'ranking') return;
+
+      if (!opts?.fromSubPanel) {
+        closeSubPanel(false);
+      }
+
+      if (currentMainTab === 'ranking' && name === 'home') {
+        destroyRankingTab();
+      }
+
+      if (name === 'ranking') {
+        ensureRankingTabDom();
+      }
+
+      currentMainTab = name;
+
       document.querySelectorAll('.tab-btn').forEach((b) => {
         b.classList.toggle('active', b.dataset.tab === name);
       });
-      document.querySelectorAll('.tab-content').forEach((c) => {
+      document.querySelectorAll('#mainTabArea .tab-content').forEach((c) => {
         c.classList.toggle('active', c.id === `tab-${name}`);
       });
       document.querySelectorAll('.bn-item').forEach((i) => {
@@ -473,9 +560,13 @@
     }
 
     function retryMarketAi() {
-      tabLoaded.market = false;
-      tabLoading.market = false;
-      ensureTabData('market');
+      if (activeSubPanel === 'market') {
+        panelLoaded.market = false;
+        panelLoading.market = false;
+        const el = document.getElementById('marketAiContent');
+        if (el) el.innerHTML = `<div class="skeleton-list">${skeletonCards(4)}</div>`;
+        loadSubPanelData('market');
+      }
     }
     window.retryMarketAi = retryMarketAi;
 
@@ -608,9 +699,13 @@
     }
 
     function retryBuried() {
-      tabLoaded.buried = false;
-      tabLoading.buried = false;
-      ensureTabData('buried');
+      if (activeSubPanel === 'buried') {
+        panelLoaded.buried = false;
+        panelLoading.buried = false;
+        const el = document.getElementById('buriedList');
+        if (el) el.innerHTML = `<div class="skeleton-list">${skeletonCards(4)}</div>`;
+        loadSubPanelData('buried');
+      }
     }
     window.retryBuried = retryBuried;
 
@@ -653,9 +748,13 @@
     }
 
     function retryFund() {
-      tabLoaded.fund = false;
-      tabLoading.fund = false;
-      ensureTabData('fund');
+      if (activeSubPanel === 'fund') {
+        panelLoaded.fund = false;
+        panelLoading.fund = false;
+        const el = document.getElementById('fundList');
+        if (el) el.innerHTML = `<div class="skeleton-list">${skeletonCards(3)}</div>`;
+        loadSubPanelData('fund');
+      }
     }
     window.retryFund = retryFund;
 
