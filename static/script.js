@@ -259,11 +259,32 @@ function isIosDevice() {
 }
 
 function isStandalonePwa() {
-  return window.matchMedia('(display-mode: standalone)').matches ||
-    window.navigator.standalone === true;
+  if (window.matchMedia('(display-mode: standalone)').matches) return true;
+  if (window.matchMedia('(display-mode: fullscreen)').matches) return true;
+  if (window.navigator.standalone === true) return true;
+  return false;
+}
+
+function isInstallDismissed() {
+  return localStorage.getItem('installDismissed') === '1';
+}
+
+function hideInstallUi() {
+  document.documentElement.classList.add('is-standalone');
+  const banner = document.getElementById('installBanner');
+  const modal = document.getElementById('iosInstallModal');
+  if (banner) banner.hidden = true;
+  if (modal) modal.hidden = true;
+}
+
+function dismissInstallBanner() {
+  localStorage.setItem('installDismissed', '1');
+  const banner = document.getElementById('installBanner');
+  if (banner) banner.hidden = true;
 }
 
 function showIosInstallModal() {
+  if (isStandalonePwa() || isInstallDismissed()) return;
   const modal = document.getElementById('iosInstallModal');
   if (modal) modal.hidden = false;
 }
@@ -274,17 +295,18 @@ function hideIosInstallModal() {
 }
 
 function showInstallBanner(mode) {
+  if (isStandalonePwa() || isInstallDismissed()) return;
   const banner = document.getElementById('installBanner');
   const textEl = banner?.querySelector('.install-banner-text');
   const installBtn = document.getElementById('installBtn');
   if (!banner) return;
 
   if (mode === 'ios') {
-    if (textEl) textEl.textContent = 'StockAI Pro をホーム画面に追加';
+    if (textEl) textEl.textContent = 'ホーム画面に追加できます';
     if (installBtn) installBtn.textContent = '追加方法';
   } else {
-    if (textEl) textEl.textContent = 'StockAI Pro をアプリとしてインストール';
-    if (installBtn) installBtn.textContent = 'インストール';
+    if (textEl) textEl.textContent = 'アプリとしてインストールできます';
+    if (installBtn) installBtn.textContent = '追加';
   }
   banner.hidden = false;
 }
@@ -310,26 +332,37 @@ function initPwaInstall() {
   const iosClose = document.getElementById('iosInstallClose');
   const iosBackdrop = document.getElementById('iosInstallBackdrop');
 
-  if (typeof IS_DESKTOP_APP !== 'undefined' && IS_DESKTOP_APP) return;
-  if (isStandalonePwa()) return;
+  if (typeof IS_DESKTOP_APP !== 'undefined' && IS_DESKTOP_APP) {
+    hideInstallUi();
+    return;
+  }
+
+  if (isStandalonePwa()) {
+    hideInstallUi();
+    return;
+  }
+
+  if (isInstallDismissed() && banner) {
+    banner.hidden = true;
+  }
 
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredInstallPrompt = e;
-    if (localStorage.getItem('installDismissed') === '1') return;
+    if (isStandalonePwa() || isInstallDismissed()) return;
     showInstallBanner('android');
   });
 
   window.addEventListener('appinstalled', () => {
     deferredInstallPrompt = null;
+    localStorage.setItem('installDismissed', '1');
     if (banner) banner.hidden = true;
     showToast('アプリのインストールが完了しました');
   });
 
-  if (isIosDevice()) {
+  if (isIosDevice() && !isInstallDismissed()) {
     setTimeout(() => {
-      if (localStorage.getItem('installDismissed') === '1') return;
-      if (isStandalonePwa()) return;
+      if (isStandalonePwa() || isInstallDismissed()) return;
       showInstallBanner('ios');
     }, 2500);
   }
@@ -341,6 +374,7 @@ function initPwaInstall() {
         const choice = await deferredInstallPrompt.userChoice;
         if (choice.outcome === 'accepted') {
           showToast('インストールを開始しました');
+          localStorage.setItem('installDismissed', '1');
         }
       } catch {
         showToast('インストールできませんでした');
@@ -358,13 +392,14 @@ function initPwaInstall() {
     showToast('ブラウザメニューから「アプリをインストール」を選んでください');
   });
 
-  dismissBtn?.addEventListener('click', () => {
-    localStorage.setItem('installDismissed', '1');
-    if (banner) banner.hidden = true;
-  });
+  dismissBtn?.addEventListener('click', dismissInstallBanner);
 
   iosClose?.addEventListener('click', hideIosInstallModal);
   iosBackdrop?.addEventListener('click', hideIosInstallModal);
+}
+
+if (isStandalonePwa()) {
+  hideInstallUi();
 }
 
 function showUpdateBanner(reg) {

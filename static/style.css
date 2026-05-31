@@ -104,10 +104,38 @@ body {
 }
 
 /* インストール / 更新バナー */
-.install-banner,
+.install-banner {
+  position: fixed;
+  bottom: calc(var(--bottom-nav-total) + 14px);
+  left: max(var(--page-pad), env(safe-area-inset-left, 0px));
+  right: max(var(--page-pad), env(safe-area-inset-right, 0px));
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: 7px 8px 7px 12px;
+  border-radius: 10px;
+  z-index: 150;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.76rem;
+  line-height: 1.25;
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.35);
+  min-height: 0;
+}
+
+.install-banner[hidden],
+html.is-standalone .install-banner,
+html.is-standalone .ios-install-modal {
+  display: none !important;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .update-banner {
   position: fixed;
-  bottom: calc(var(--bottom-nav-total) + 8px);
+  bottom: auto;
+  top: calc(var(--header-h) + 8px);
   left: max(var(--page-pad), env(safe-area-inset-left, 0px));
   right: max(var(--page-pad), env(safe-area-inset-right, 0px));
   max-width: var(--content-max);
@@ -123,40 +151,40 @@ body {
   box-shadow: var(--shadow);
 }
 
-.update-banner {
-  bottom: auto;
-  top: calc(var(--header-h) + 8px);
-}
-
 .install-btn {
-  padding: 10px 16px;
+  padding: 5px 10px;
   border: none;
-  border-radius: 8px;
+  border-radius: 6px;
   background: var(--accent);
   color: #fff;
   font-weight: 600;
-  font-size: 0.85rem;
+  font-size: 0.74rem;
   cursor: pointer;
   margin-left: auto;
-  min-height: 44px;
+  min-height: 30px;
   flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .install-banner-text {
   flex: 1;
   min-width: 0;
-  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .install-dismiss {
   border: none;
   background: transparent;
   color: var(--text-muted);
-  font-size: 1.1rem;
+  font-size: 0.9rem;
   cursor: pointer;
-  padding: 8px 12px;
-  min-width: 44px;
-  min-height: 44px;
+  padding: 2px 6px;
+  min-width: 28px;
+  min-height: 28px;
+  flex-shrink: 0;
+  line-height: 1;
 }
 
 /* iOS PWA 追加案内 */

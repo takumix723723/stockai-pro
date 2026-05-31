@@ -22,10 +22,20 @@
   </div>
 
   <div id="installBanner" class="install-banner glass" hidden>
-    <span class="install-banner-text">StockAI Pro をアプリとしてインストール</span>
-    <button type="button" id="installBtn" class="install-btn">インストール</button>
+    <span class="install-banner-text">ホーム画面に追加できます</span>
+    <button type="button" id="installBtn" class="install-btn">追加</button>
     <button type="button" id="installDismiss" class="install-dismiss" aria-label="閉じる">✕</button>
   </div>
+
+  <script>
+    (function () {
+      var standalone = window.matchMedia('(display-mode: standalone)').matches
+        || window.navigator.standalone === true;
+      if (standalone) {
+        document.documentElement.classList.add('is-standalone');
+      }
+    })();
+  </script>
 
   <div id="iosInstallModal" class="ios-install-modal" hidden aria-modal="true" role="dialog">
     <div class="ios-install-backdrop" id="iosInstallBackdrop"></div>
