@@ -454,18 +454,39 @@ html.is-standalone .install-guide-modal {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px;
+  gap: 12px;
+  padding: calc(env(safe-area-inset-top, 0px) + 10px) 14px 16px 16px;
   border-bottom: 1px solid var(--border);
   font-weight: 600;
+  min-height: calc(env(safe-area-inset-top, 0px) + 56px);
 }
 
 .notif-close {
+  width: 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
   border: none;
   background: transparent;
   color: var(--text-muted);
   font-size: 1.2rem;
+  line-height: 1;
   cursor: pointer;
-  padding: 4px 8px;
+  padding: 0;
+  flex-shrink: 0;
+  margin: 0;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.notif-close:active {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme='light'] .notif-close:active {
+  background: rgba(0, 0, 0, 0.06);
 }
 
 .notif-list {
