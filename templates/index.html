@@ -21,36 +21,6 @@
     <p class="splash-sub">日本株分析</p>
   </div>
 
-  <div id="installBanner" class="install-banner glass" hidden>
-    <span class="install-banner-text">ホーム画面に追加できます</span>
-    <button type="button" id="installBtn" class="install-btn">追加</button>
-    <button type="button" id="installDismiss" class="install-dismiss" aria-label="閉じる">✕</button>
-  </div>
-
-  <script>
-    (function () {
-      var standalone = window.matchMedia('(display-mode: standalone)').matches
-        || window.navigator.standalone === true;
-      if (standalone) {
-        document.documentElement.classList.add('is-standalone');
-      }
-    })();
-  </script>
-
-  <div id="iosInstallModal" class="ios-install-modal" hidden aria-modal="true" role="dialog">
-    <div class="ios-install-backdrop" id="iosInstallBackdrop"></div>
-    <div class="ios-install-sheet glass">
-      <div class="ios-install-title">ホーム画面に追加</div>
-      <p class="ios-install-desc">StockAI Pro をアプリのように使えます。Safari で次の手順を行ってください。</p>
-      <ol class="ios-install-steps">
-        <li><span class="ios-step-icon">□↑</span> 画面下の<strong>共有</strong>ボタンをタップ</li>
-        <li><strong>「ホーム画面に追加」</strong>を選択</li>
-        <li>右上の<strong>「追加」</strong>をタップ</li>
-      </ol>
-      <button type="button" id="iosInstallClose" class="install-btn ios-install-close">閉じる</button>
-    </div>
-  </div>
-
   <div class="global-progress" id="globalProgress" aria-hidden="true"><div class="global-progress-bar"></div></div>
 
   <!-- ヘッダー -->
