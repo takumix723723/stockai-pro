@@ -16,14 +16,10 @@
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 </head>
 <body class="ipo-page fade-in">
-  <header class="app-header">
+  <header class="app-header ipo-app-header">
     <div class="header-inner">
       <div class="header-left">
         <a href="/" class="stock-back" aria-label="ホームへ">←</a>
-        <div class="stock-header-titles">
-          <span class="stock-header-symbol">IPO・PO</span>
-          <span class="stock-header-name" id="ipoMetaLabel">読み込み中…</span>
-        </div>
       </div>
     </div>
   </header>
@@ -31,26 +27,31 @@
   <div class="global-progress" id="globalProgress" aria-hidden="true"><div class="global-progress-bar"></div></div>
 
   <main class="ipo-main">
-    <nav class="ipo-subtabs">
-      <button type="button" class="ipo-subtab active" data-ipo-tab="ipo">IPO（新規公開）</button>
-      <button type="button" class="ipo-subtab" data-ipo-tab="po">PO（売出）</button>
-    </nav>
+    <div class="ipo-page-head">
+      <div class="ipo-page-head-left">
+        <h1 class="ipo-page-title" id="ipoPageTitle">IPO・PO</h1>
+        <p class="ipo-page-meta" id="ipoPageMeta">読み込み中…</p>
+      </div>
+      <div class="ipo-page-head-right">
+        <label class="sr-only" for="ipoTypeSelect">表示切替</label>
+        <select id="ipoTypeSelect" class="ipo-type-select" aria-label="IPO / PO 切替">
+          <option value="ipo">IPO</option>
+          <option value="po">PO</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="ipo-segment" id="ipoSegment" role="tablist" aria-label="絞り込み">
+      <button type="button" class="ipo-segment-btn active" data-filter="all" role="tab" aria-selected="true">すべて</button>
+      <button type="button" class="ipo-segment-btn" data-filter="open" role="tab" aria-selected="false" id="ipoSegmentOpen">募集中</button>
+      <button type="button" class="ipo-segment-btn" data-filter="closed" role="tab" aria-selected="false">終了</button>
+    </div>
 
     <div class="ipo-panel active" id="ipoPanelIpo">
-      <div class="ipo-filter-row">
-        <button type="button" class="ipo-filter active" data-filter="all">すべて</button>
-        <button type="button" class="ipo-filter" data-filter="open">募集中</button>
-        <button type="button" class="ipo-filter" data-filter="closed">終了</button>
-      </div>
       <div class="ipo-list" id="ipoList"><div class="skeleton-list"><div class="skeleton-card-row"></div><div class="skeleton-card-row"></div></div></div>
     </div>
 
     <div class="ipo-panel" id="ipoPanelPo" hidden>
-      <div class="ipo-filter-row">
-        <button type="button" class="ipo-filter po-filter active" data-po-filter="all">すべて</button>
-        <button type="button" class="ipo-filter po-filter" data-po-filter="open">受付中</button>
-        <button type="button" class="ipo-filter po-filter" data-po-filter="closed">終了</button>
-      </div>
       <div class="ipo-list" id="poList"><div class="skeleton-list"><div class="skeleton-card-row"></div></div></div>
     </div>
 
@@ -60,8 +61,8 @@
   <nav class="bottom-nav bottom-nav-minimal bottom-nav-quad">
     <a href="/" class="bn-item"><span class="bn-icon">🏠</span><span class="bn-label">ホーム</span></a>
     <a href="/?tab=watchlist" class="bn-item"><span class="bn-icon">📋</span><span class="bn-label">登録銘柄</span></a>
-    <a href="/ipo" class="bn-item active"><span class="bn-icon">🆕</span><span class="bn-label">IPO</span></a>
     <a href="/?tab=ranking" class="bn-item"><span class="bn-icon">📊</span><span class="bn-label">急騰急落</span></a>
+    <a href="/ipo" class="bn-item active"><span class="bn-icon">🆕</span><span class="bn-label">IPO</span></a>
   </nav>
 
   <script src="/static/script.js"></script>

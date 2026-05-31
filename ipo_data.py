@@ -280,4 +280,5 @@ def get_ipo_po_meta() -> dict:
         "ipo_count": len(IPO_CATALOG),
         "po_count": len(PO_CATALOG),
         "open_ipo_count": sum(1 for i in IPO_CATALOG if i["status"] == "open"),
+        "open_po_count": sum(1 for i in PO_CATALOG if i["status"] == "open"),
     }

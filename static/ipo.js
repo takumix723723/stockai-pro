@@ -1,5 +1,5 @@
 /**
- * IPO / PO 画面 — お気に入り・通知拡張用
+ * IPO / PO 画面 — SBI風カードUI
  * localStorage: ipoFavorites [{ id, type, notify: { bb_deadline, listing_date } }]
  */
 const IpoFavorites = {
@@ -49,28 +49,29 @@ const IpoPage = {
   ipoFilter: 'all',
   poFilter: 'all',
   activeTab: 'ipo',
+  lastMeta: null,
 
   init() {
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme) document.documentElement.setAttribute('data-theme', savedTheme);
 
-    document.querySelectorAll('.ipo-subtab').forEach((btn) => {
-      btn.addEventListener('click', () => this.switchTab(btn.dataset.ipoTab));
+    const typeSelect = document.getElementById('ipoTypeSelect');
+    typeSelect?.addEventListener('change', () => {
+      this.switchTab(typeSelect.value);
     });
-    document.querySelectorAll('.ipo-filter:not(.po-filter)').forEach((btn) => {
+
+    document.querySelectorAll('.ipo-segment-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
-        document.querySelectorAll('.ipo-filter:not(.po-filter)').forEach((b) => b.classList.remove('active'));
-        btn.classList.add('active');
-        this.ipoFilter = btn.dataset.filter;
-        this.loadIpoList();
-      });
-    });
-    document.querySelectorAll('.po-filter').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('.po-filter').forEach((b) => b.classList.remove('active'));
-        btn.classList.add('active');
-        this.poFilter = btn.dataset.poFilter;
-        this.loadPoList();
+        const filter = btn.dataset.filter;
+        if (this.activeTab === 'po') {
+          this.poFilter = filter;
+          this.setSegmentActive(filter);
+          this.loadPoList();
+        } else {
+          this.ipoFilter = filter;
+          this.setSegmentActive(filter);
+          this.loadIpoList();
+        }
       });
     });
 
@@ -80,20 +81,58 @@ const IpoPage = {
 
   switchTab(name) {
     this.activeTab = name;
-    document.querySelectorAll('.ipo-subtab').forEach((b) => {
-      b.classList.toggle('active', b.dataset.ipoTab === name);
-    });
+    const select = document.getElementById('ipoTypeSelect');
+    if (select && select.value !== name) select.value = name;
+
     document.getElementById('ipoPanelIpo').hidden = name !== 'ipo';
     document.getElementById('ipoPanelPo').hidden = name !== 'po';
     document.getElementById('ipoPanelIpo').classList.toggle('active', name === 'ipo');
     document.getElementById('ipoPanelPo').classList.toggle('active', name === 'po');
+
+    const openBtn = document.getElementById('ipoSegmentOpen');
+    if (openBtn) openBtn.textContent = name === 'po' ? '受付中' : '募集中';
+
+    const filter = name === 'po' ? this.poFilter : this.ipoFilter;
+    this.setSegmentActive(filter);
+    this.updatePageMeta(this.lastMeta);
+  },
+
+  setSegmentActive(filter) {
+    document.querySelectorAll('.ipo-segment-btn').forEach((btn) => {
+      const on = btn.dataset.filter === filter;
+      btn.classList.toggle('active', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+  },
+
+  updatePageMeta(meta) {
+    if (!meta) return;
+    this.lastMeta = meta;
+    const title = document.getElementById('ipoPageTitle');
+    const label = document.getElementById('ipoPageMeta');
+    if (title) title.textContent = this.activeTab === 'po' ? 'PO（売出）' : 'IPO・PO';
+    if (!label) return;
+    if (this.activeTab === 'po') {
+      label.textContent = `受付中 ${meta.open_po_count ?? 0}件 · 更新 ${meta.updated || ''}`;
+    } else {
+      label.textContent = `募集中 ${meta.open_ipo_count ?? 0}件 · 更新 ${meta.updated || ''}`;
+    }
   },
 
   statusClass(status) {
     return status === 'open' ? 'ipo-status-open' : 'ipo-status-closed';
   },
 
-  favBtnHtml(id, type, events) {
+  sbiRow(label, value, extraClass = '') {
+    return `
+      <div class="ipo-sbi-row">
+        <span class="ipo-sbi-label">${escapeHtml(label)}</span>
+        <span class="ipo-sbi-value${extraClass ? ` ${extraClass}` : ''}">${escapeHtml(value)}</span>
+      </div>
+    `;
+  },
+
+  favBtnHtml(id, type) {
     const on = IpoFavorites.isFavorite(id);
     return `<button type="button" class="ipo-fav-btn${on ? ' is-on' : ''}" data-fav-id="${escapeHtml(id)}" data-fav-type="${escapeHtml(type)}" aria-label="お気に入り">${on ? '★' : '☆'}</button>`;
   },
@@ -103,9 +142,7 @@ const IpoPage = {
       btn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        const id = btn.dataset.favId;
-        const type = btn.dataset.favType;
-        const on = IpoFavorites.toggle(id, type, []);
+        const on = IpoFavorites.toggle(btn.dataset.favId, btn.dataset.favType, []);
         btn.classList.toggle('is-on', on);
         btn.textContent = on ? '★' : '☆';
         showToast?.(on ? 'お気に入りに追加（通知拡張予定）' : 'お気に入り解除');
@@ -116,53 +153,53 @@ const IpoPage = {
   ipoCardHtml(item) {
     const href = `/ipo/${encodeURIComponent(item.id)}`;
     return `
-      <div class="ipo-card card-premium" data-ipo-href="${escapeHtml(href)}">
-        <div class="ipo-card-top">
-          <div class="ipo-card-title">
-            <span class="ipo-card-name">${escapeHtml(item.name_full || item.name)}</span>
-            <span class="ipo-card-code">${escapeHtml(item.code)}</span>
+      <article class="ipo-sbi-card">
+        <div class="ipo-sbi-card-head">
+          <div class="ipo-sbi-badges">
+            <span class="ipo-sbi-badge">IPO</span>
+            <span class="ipo-sbi-status ${this.statusClass(item.status)}">${escapeHtml(item.status_label)}</span>
           </div>
-          ${this.favBtnHtml(item.id, 'ipo', item.notify_events)}
+          ${this.favBtnHtml(item.id, 'ipo')}
         </div>
-        <div class="ipo-card-body">
-        <div class="ipo-card-tags">
-          <span class="ipo-tag market">${escapeHtml(item.market)}</span>
-          <span class="ipo-tag ${this.statusClass(item.status)}">${escapeHtml(item.status_label)}</span>
-          ${item.sector ? `<span class="ipo-tag sector">${escapeHtml(item.sector)}</span>` : ''}
+        <div class="ipo-sbi-title-block">
+          <h3 class="ipo-sbi-name">${escapeHtml(item.name_full || item.name)}</h3>
+          <span class="ipo-sbi-code">${escapeHtml(item.code)}</span>
         </div>
-        <div class="ipo-card-grid">
-          <div class="ipo-kv"><span class="ipo-k">BB期間</span><span class="ipo-v">${escapeHtml(item.bb_period_fmt)}</span></div>
-          <div class="ipo-kv"><span class="ipo-k">上場日</span><span class="ipo-v">${escapeHtml(item.listing_date_fmt)}</span></div>
-          <div class="ipo-kv"><span class="ipo-k">仮条件</span><span class="ipo-v">${escapeHtml(item.price_range)}</span></div>
-          <div class="ipo-kv"><span class="ipo-k">想定価格</span><span class="ipo-v highlight">${escapeHtml(item.expected_price_fmt)}</span></div>
-          <div class="ipo-kv ipo-kv-wide"><span class="ipo-k">主幹事</span><span class="ipo-v">${escapeHtml(item.lead_underwriter)}</span></div>
+        <div class="ipo-sbi-rows">
+          ${this.sbiRow('市場区分', item.market)}
+          ${this.sbiRow('BB期間', item.bb_period_fmt)}
+          ${this.sbiRow('仮条件', item.price_range)}
+          ${this.sbiRow('想定価格', item.expected_price_fmt, 'ipo-sbi-value-accent')}
+          ${this.sbiRow('上場日', item.listing_date_fmt)}
+          ${this.sbiRow('主幹事', item.lead_underwriter)}
         </div>
-        </div>
-      </div>
+        <a href="${escapeHtml(href)}" class="ipo-sbi-detail-btn">詳細を見る</a>
+      </article>
     `;
   },
 
   poCardHtml(item) {
     return `
-      <div class="ipo-card po-card card-premium">
-        <div class="ipo-card-top">
-          <div class="ipo-card-title">
-            <span class="ipo-card-name">${escapeHtml(item.name)}</span>
-            <span class="ipo-card-code">${escapeHtml(item.code)}</span>
+      <article class="ipo-sbi-card po-sbi-card">
+        <div class="ipo-sbi-card-head">
+          <div class="ipo-sbi-badges">
+            <span class="ipo-sbi-badge po-sbi-badge">PO</span>
+            <span class="ipo-sbi-status ${this.statusClass(item.status)}">${escapeHtml(item.status_label)}</span>
           </div>
-          ${this.favBtnHtml(item.id, 'po', item.notify_events)}
+          ${this.favBtnHtml(item.id, 'po')}
         </div>
-        <div class="ipo-card-tags">
-          <span class="ipo-tag market">${escapeHtml(item.market || '—')}</span>
-          <span class="ipo-tag ${this.statusClass(item.status)}">${escapeHtml(item.status_label)}</span>
-          <span class="ipo-tag discount">割引 ${escapeHtml(item.discount_rate)}</span>
+        <div class="ipo-sbi-title-block">
+          <h3 class="ipo-sbi-name">${escapeHtml(item.name)}</h3>
+          <span class="ipo-sbi-code">${escapeHtml(item.code)}</span>
         </div>
-        <div class="ipo-card-grid">
-          <div class="ipo-kv"><span class="ipo-k">受渡日</span><span class="ipo-v">${escapeHtml(item.settlement_date_fmt)}</span></div>
-          <div class="ipo-kv"><span class="ipo-k">売出株数</span><span class="ipo-v">${escapeHtml(item.shares_fmt || '—')}</span></div>
-          <div class="ipo-kv ipo-kv-wide"><span class="ipo-k">短期影響</span><span class="ipo-v">${escapeHtml(item.short_term_impact)}</span></div>
+        <div class="ipo-sbi-rows">
+          ${this.sbiRow('市場区分', item.market || '—')}
+          ${this.sbiRow('割引率', item.discount_rate, 'ipo-sbi-value-accent')}
+          ${this.sbiRow('受渡日', item.settlement_date_fmt)}
+          ${this.sbiRow('売出株数', item.shares_fmt || '—')}
+          ${this.sbiRow('短期影響', item.short_term_impact)}
         </div>
-      </div>
+      </article>
     `;
   },
 
@@ -175,23 +212,13 @@ const IpoPage = {
       const res = opts.silent ? await fetchSilent(`/api/ipo${q}`) : await fetch(`/api/ipo${q}`);
       const json = await res.json();
       if (json.status !== 'ok') throw new Error('failed');
-      const meta = json.meta || {};
-      const label = document.getElementById('ipoMetaLabel');
-      if (label) {
-        label.textContent = `募集中 ${meta.open_ipo_count ?? 0}件 · ${meta.updated || ''}`;
-      }
+      this.updatePageMeta(json.meta || {});
       if (!json.items.length) {
         el.innerHTML = '<div class="ipo-empty">該当するIPOがありません</div>';
         return;
       }
       el.innerHTML = json.items.map((i) => this.ipoCardHtml(i)).join('');
       this.bindFavButtons(el);
-      el.querySelectorAll('[data-ipo-href]').forEach((card) => {
-        card.addEventListener('click', (e) => {
-          if (e.target.closest('.ipo-fav-btn')) return;
-          window.location.href = card.dataset.ipoHref;
-        });
-      });
       resetAutoRetry?.('ipoList');
     } catch (e) {
       console.error(e);
@@ -208,6 +235,7 @@ const IpoPage = {
       const res = opts.silent ? await fetchSilent(`/api/po${q}`) : await fetch(`/api/po${q}`);
       const json = await res.json();
       if (json.status !== 'ok') throw new Error('failed');
+      if (this.activeTab === 'po') this.updatePageMeta(json.meta || {});
       if (!json.items.length) {
         el.innerHTML = '<div class="ipo-empty">該当するPOがありません</div>';
         return;
