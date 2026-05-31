@@ -153,7 +153,8 @@
     let activeStockSubtab = 'technical';
     let lastStockPrice = null;
     const PERIOD_LABELS = { '1d': '1日', '1w': '1週', '1mo': '1月', '3mo': '3月', '1y': '1年' };
-    const STOCK_REFRESH_MS = 12000;
+    const STOCK_FAST_MS = (window.REFRESH_MS && window.REFRESH_MS.STOCK_FAST) || 4000;
+    const STOCK_SLOW_MS = (window.REFRESH_MS && window.REFRESH_MS.STOCK_SLOW) || 12000;
 
     function chartHeight() {
       const vh = window.innerHeight;
@@ -200,34 +201,46 @@
 
     function initStockAutoRefresh() {
       if (!window.createPageAutoRefresh) return;
-      const autoRefresh = createPageAutoRefresh({
-        intervalMs: STOCK_REFRESH_MS,
-        onRefresh: () => refreshStockPage(),
+      window._stockFastRefresh = createPageAutoRefresh({
+        intervalMs: STOCK_FAST_MS,
+        onRefresh: () => refreshStockFast(),
       });
-      autoRefresh.start();
-      window._stockAutoRefresh = autoRefresh;
+      window._stockSlowRefresh = createPageAutoRefresh({
+        intervalMs: STOCK_SLOW_MS,
+        onRefresh: () => refreshStockSlow(),
+      });
+      window._stockFastRefresh.start();
+      window._stockSlowRefresh.start();
     }
 
-    async function refreshStockPage() {
+    /** 株価・PTS・気配・需給 — 3〜5秒（最優先） */
+    async function refreshStockFast() {
       if (document.hidden) return;
-      setLiveSyncStatus('stockLiveSync', '更新中…', true);
+      pulseLiveSync('stockLiveSync');
 
-      const tasks = [
-        loadStock({ silent: true }),
-        loadChart(currentPeriod, { silent: true }),
-      ];
-
-      /* 需給/信用・気配はタブ表示中または一度読込済みなら追従更新 */
-      if (activeStockSubtab === 'supply' || subpanelLoaded.supply) {
-        tasks.push(loadSupply({ silent: true }));
-      }
+      const tasks = [loadStock({ silent: true })];
       if (activeStockSubtab === 'orderbook' || subpanelLoaded.orderbook) {
         tasks.push(loadOrderbook({ silent: true }));
+      }
+      if (activeStockSubtab === 'supply' || subpanelLoaded.supply) {
+        tasks.push(loadSupply({ silent: true }));
       }
 
       await Promise.allSettled(tasks);
       setLiveSyncStatus('stockLiveSync', formatLiveTime());
       updateStockLiveBadge(true);
+    }
+
+    /** チャート・AI・ニュース等 — 10〜15秒 */
+    async function refreshStockSlow() {
+      if (document.hidden) return;
+      await Promise.allSettled([
+        loadChart(currentPeriod, { silent: true }),
+        loadAiCard({ silent: true }),
+        loadHoldings({ silent: true }),
+        loadSector({ silent: true }),
+        loadNews({ silent: true }),
+      ]);
     }
 
     function updateStockLiveBadge(active) {
@@ -248,7 +261,9 @@
         p.hidden = !on;
       });
       if (name === 'supply' && !subpanelLoaded.supply) loadSupply();
+      else if (name === 'supply') window._stockFastRefresh?.refreshNow();
       if (name === 'orderbook' && !subpanelLoaded.orderbook) loadOrderbook();
+      else if (name === 'orderbook') window._stockFastRefresh?.refreshNow();
     }
 
     function fmtPrice(n) {
@@ -501,9 +516,11 @@
           : await fetchWithProgress(`/api/stock?symbol=${encodeURIComponent(SYMBOL)}`);
         const json = await res.json();
         if (json.status !== 'ok' || !json.data) {
-          if (!silent) {
-            scheduleAutoRetry('stock', () => loadStock({ isRetry: true }), { containerEl: card });
-          }
+          scheduleAutoRetry(
+            'stock',
+            () => loadStock({ isRetry: true, silent }),
+            { containerEl: silent ? null : card, silent: !!silent }
+          );
           return false;
         }
         applyStockData(json.data, opts);
@@ -511,9 +528,11 @@
         return true;
       } catch (e) {
         console.error(e);
-        if (!silent) {
-          scheduleAutoRetry('stock', () => loadStock({ isRetry: true }), { containerEl: card });
-        }
+        scheduleAutoRetry(
+          'stock',
+          () => loadStock({ isRetry: true, silent }),
+          { containerEl: silent ? null : card, silent: !!silent }
+        );
         return false;
       }
     }
@@ -606,6 +625,8 @@
       } catch (e) {
         if (!silent) {
           scheduleAutoRetry('supply', () => loadSupply({ silent: false, isRetry: true }), { containerEl: panel });
+        } else {
+          scheduleAutoRetry('supply', () => loadSupply({ silent: true, isRetry: true }), { silent: true });
         }
         return false;
       }
@@ -613,6 +634,9 @@
     window.loadSupply = loadSupply;
 
     function renderOrderbookPanel(b, panel) {
+      const prevScroll = panel.querySelector('.ob-board-scroll');
+      const scrollTop = prevScroll ? prevScroll.scrollTop : 0;
+
       const sells = (b.sells || b.levels || []).filter((l) => l.side === 'sell').sort((a, c) => c.price - a.price);
       const buys = (b.buys || b.levels || []).filter((l) => l.side === 'buy').sort((a, c) => c.price - a.price);
       const allQty = [...sells, ...buys].map((l) => l.qty);
@@ -682,6 +706,11 @@
           </div>
         </div>
       `;
+
+      const nextScroll = panel.querySelector('.ob-board-scroll');
+      if (nextScroll && scrollTop > 0) {
+        nextScroll.scrollTop = scrollTop;
+      }
     }
 
     async function loadOrderbook(opts = {}) {
@@ -704,6 +733,8 @@
       } catch (e) {
         if (!silent) {
           scheduleAutoRetry('orderbook', () => loadOrderbook({ silent: false, isRetry: true }), { containerEl: panel });
+        } else {
+          scheduleAutoRetry('orderbook', () => loadOrderbook({ silent: true, isRetry: true }), { silent: true });
         }
         return false;
       }

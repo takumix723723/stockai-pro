@@ -343,18 +343,35 @@
 
     function initIndexAutoRefresh() {
       if (!window.createPageAutoRefresh) return;
-      const autoRefresh = createPageAutoRefresh({
-        intervalMs: 30000,
+      const indexMs = (window.REFRESH_MS && window.REFRESH_MS.INDEX) || 45000;
+      const watchMs = (window.REFRESH_MS && window.REFRESH_MS.WATCHLIST) || 15000;
+
+      window._indexAutoRefresh = createPageAutoRefresh({
+        intervalMs: indexMs,
         onRefresh: () => refreshIndexPage(),
       });
-      autoRefresh.start();
-      window._indexAutoRefresh = autoRefresh;
+      window._watchlistAutoRefresh = createPageAutoRefresh({
+        intervalMs: watchMs,
+        onRefresh: () => refreshWatchlistFast(),
+      });
+      window._indexAutoRefresh.start();
+      window._watchlistAutoRefresh.start();
+    }
+
+    async function refreshWatchlistFast() {
+      if (document.hidden || currentMainTab !== 'watchlist') return;
+      if (!tabLoaded.watchlist) return;
+      pulseLiveSync('liveSyncStatus');
+      await WatchlistUI.refresh({ silent: true });
+      if (homeMarketBarMounted) {
+        setLiveSyncStatus('liveSyncStatus', formatLiveTime());
+      }
     }
 
     async function refreshIndexPage() {
       if (document.hidden) return;
       if (homeMarketBarMounted) {
-        setLiveSyncStatus('liveSyncStatus', '更新中…', true);
+        pulseLiveSync('liveSyncStatus');
       }
 
       const tasks = [];
@@ -367,11 +384,10 @@
         tasks.push(loadHomeContent({ silent: true }));
       } else if (currentMainTab === 'ranking' && tabLoaded.ranking) {
         tasks.push(loadRanking({ silent: true }));
-      } else if (currentMainTab === 'watchlist' && tabLoaded.watchlist) {
-        tasks.push(WatchlistUI.refresh({ silent: true }));
       } else if (currentMainTab === 'ipo' && tabLoaded.ipo) {
         tasks.push(loadIpoContent({ silent: true }));
       }
+      /* watchlist は refreshWatchlistFast（15秒）で別途更新 */
 
       tasks.push(loadNotifications({ silent: true }));
 

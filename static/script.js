@@ -158,15 +158,35 @@ function flashPriceElement(el, direction) {
   el.classList.add(direction === 'up' ? 'price-flash-up' : 'price-flash-down');
 }
 
+/** ページ種別ごとの更新間隔（ms） */
+const REFRESH_MS = {
+  INDEX: 45000,
+  STOCK_SLOW: 12000,
+  STOCK_FAST: 4000,
+  WATCHLIST: 15000,
+};
+
+window.REFRESH_MS = REFRESH_MS;
+
+function pulseLiveSync(elementId, durationMs = 350) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  el.classList.add('is-pulse');
+  clearTimeout(el._pulseTimer);
+  el._pulseTimer = setTimeout(() => el.classList.remove('is-pulse'), durationMs);
+}
+
 /**
  * Page Visibility 対応の自動更新タイマー
  * 非表示時は停止、再表示時に即1回更新してタイマー再開
  */
 function createPageAutoRefresh(options) {
-  const intervalMs = options.intervalMs || 30000;
+  const intervalMs = options.intervalMs || REFRESH_MS.INDEX;
   const onRefresh = options.onRefresh || (() => {});
+  const allowOverlap = !!options.allowOverlap;
   let timerId = null;
   let started = false;
+  let running = false;
 
   function isVisible() {
     return !document.hidden;
@@ -179,9 +199,15 @@ function createPageAutoRefresh(options) {
     }
   }
 
-  function tick(immediate) {
+  async function tick(immediate) {
     if (!isVisible()) return;
-    onRefresh(!!immediate);
+    if (running && !allowOverlap) return;
+    running = true;
+    try {
+      await onRefresh(!!immediate);
+    } finally {
+      running = false;
+    }
   }
 
   function start() {
@@ -205,6 +231,9 @@ function createPageAutoRefresh(options) {
   return {
     start() {
       started = true;
+      if (options.leading !== false && isVisible()) {
+        tick(true);
+      }
       start();
     },
     stop() {
@@ -216,7 +245,7 @@ function createPageAutoRefresh(options) {
       document.removeEventListener('visibilitychange', onVisibilityChange);
     },
     refreshNow() {
-      tick(true);
+      return tick(true);
     },
   };
 }
