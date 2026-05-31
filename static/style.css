@@ -3548,6 +3548,27 @@ body.main-tab-ipo .ipo-page-embed .ipo-page-head {
   background: var(--bg-elevated);
 }
 
+.ipo-sbi-status.ipo-status-applying,
+.ipo-tag.ipo-status-applying {
+  color: #34d399;
+  border-color: rgba(52, 211, 153, 0.4);
+  background: rgba(52, 211, 153, 0.1);
+}
+
+.ipo-sbi-status.ipo-status-awaiting,
+.ipo-tag.ipo-status-awaiting {
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.45);
+  background: rgba(251, 191, 36, 0.12);
+}
+
+.ipo-sbi-status.ipo-status-scheduled,
+.ipo-tag.ipo-status-scheduled {
+  color: #60a5fa;
+  border-color: rgba(96, 165, 250, 0.45);
+  background: rgba(96, 165, 250, 0.12);
+}
+
 .ipo-sbi-status.ipo-status-open {
   color: #34d399;
   border-color: rgba(52, 211, 153, 0.4);
@@ -3682,10 +3703,23 @@ body.main-tab-ipo .ipo-page-embed .ipo-page-head {
   border-color: rgba(59, 130, 246, 0.35);
 }
 
+.ipo-tag.ipo-status-applying,
 .ipo-tag.ipo-status-open {
   color: #34d399;
   border-color: rgba(52, 211, 153, 0.35);
   background: rgba(52, 211, 153, 0.08);
+}
+
+.ipo-tag.ipo-status-awaiting {
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.4);
+  background: rgba(251, 191, 36, 0.1);
+}
+
+.ipo-tag.ipo-status-scheduled {
+  color: #60a5fa;
+  border-color: rgba(96, 165, 250, 0.4);
+  background: rgba(96, 165, 250, 0.1);
 }
 
 .ipo-tag.ipo-status-closed {

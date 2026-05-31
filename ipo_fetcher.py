@@ -8,7 +8,7 @@ import re
 import traceback
 import urllib.error
 import urllib.request
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from html import unescape
 
 JPX_IPO_URL = "https://www.jpx.co.jp/listing/stocks/new/index.html"
@@ -159,34 +159,37 @@ def _compute_status(
     bb_end: str | None,
     today: date | None = None,
 ) -> tuple[str, str]:
+    """
+    IPOフェーズ判定（上場済みは呼び出し元で除外）
+    applying         = BB期間中（申込中）
+    awaiting_listing = BB終了〜上場前（上場待ち）
+    scheduled        = BB開始前（予定）
+    """
     today = today or date.today()
-    if listing_iso:
-        listing_d = date.fromisoformat(listing_iso)
-        if listing_d < today:
-            return "closed", "終了"
-
-    if bb_end:
-        end_d = date.fromisoformat(bb_end)
-        if end_d < today:
-            return "closed", "BB終了"
-
-    if bb_start:
-        start_d = date.fromisoformat(bb_start)
-        if start_d > today:
-            return "open", "間もなく募集"
 
     if bb_start and bb_end:
         start_d = date.fromisoformat(bb_start)
         end_d = date.fromisoformat(bb_end)
         if start_d <= today <= end_d:
-            return "open", "募集中"
+            return "applying", "申込中"
+        if today < start_d:
+            return "scheduled", "予定"
+        if today > end_d:
+            if listing_iso and date.fromisoformat(listing_iso) > today:
+                return "awaiting_listing", "上場待ち"
 
-    if listing_iso:
-        listing_d = date.fromisoformat(listing_iso)
-        if listing_d >= today:
-            return "open", "上場予定"
+    if listing_iso and date.fromisoformat(listing_iso) > today:
+        return "scheduled", "予定"
 
-    return "closed", "終了"
+    return "scheduled", "予定"
+
+
+def _is_listed(listing_iso: str | None, today: date | None = None) -> bool:
+    """上場日 <= 今日 なら上場済み（一覧除外）"""
+    today = today or date.today()
+    if not listing_iso:
+        return False
+    return date.fromisoformat(listing_iso) <= today
 
 
 def _fetch_jpx_html() -> str:
@@ -255,6 +258,9 @@ def _parse_jpx_rows(html: str) -> list[dict]:
             s = date.fromisoformat(item["bb_start"])
             e = date.fromisoformat(item["bb_end"])
             item["bb_period_fmt"] = f"{s.month}/{s.day} 〜 {e.month}/{e.day}"
+
+        if _is_listed(item.get("listing_date")):
+            continue
 
         status, status_label = _compute_status(
             item.get("listing_date"),
@@ -325,6 +331,9 @@ def _build_fallback_catalog() -> list[dict]:
             "market": enrich.get("market", "グロース"),
             "ai_first_day_expect": enrich.get("ai_first_day_expect"),
         }
+        if _is_listed(base.get("listing_date")):
+            continue
+
         status, status_label = _compute_status(
             base.get("listing_date"),
             base.get("bb_start"),
@@ -377,22 +386,17 @@ def fetch_ipo_catalog(force: bool = False) -> tuple[list[dict], dict]:
         items = _build_fallback_catalog()
         source = "参考データ（オフライン）"
 
-    # 上場から90日以上経過した銘柄は一覧から除外（直近IPOに集中）
-    cutoff = date.today() - timedelta(days=90)
-    filtered = []
-    for item in items:
-        ld = item.get("listing_date")
-        if ld and date.fromisoformat(ld) < cutoff and item.get("status") == "closed":
-            continue
-        filtered.append(item)
-    if filtered:
-        items = filtered
+    # 上場済み（上場日 <= 今日）は一覧から除外
+    items = [i for i in items if not _is_listed(i.get("listing_date"))]
 
     meta = {
         "updated": now.strftime("%Y-%m-%d %H:%M"),
         "source": source,
         "ipo_count": len(items),
-        "open_ipo_count": sum(1 for i in items if i["status"] == "open"),
+        "applying_ipo_count": sum(1 for i in items if i["status"] == "applying"),
+        "awaiting_ipo_count": sum(1 for i in items if i["status"] == "awaiting_listing"),
+        "scheduled_ipo_count": sum(1 for i in items if i["status"] == "scheduled"),
+        "open_ipo_count": sum(1 for i in items if i["status"] == "applying"),
     }
     _cache = {"items": items, "meta": meta, "fetched_at": now}
     return items, meta

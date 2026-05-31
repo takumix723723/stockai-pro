@@ -63,7 +63,7 @@ const IpoFavorites = {
 };
 
 const IpoPage = {
-  ipoFilter: 'all',
+  ipoFilter: 'applying',
   poFilter: 'all',
   activeTab: 'ipo',
   lastMeta: null,
@@ -124,6 +124,16 @@ const IpoPage = {
       this.switchTab(typeSelect.value);
     });
 
+    this.renderSegmentForTab(this.activeTab);
+    this.bindSegmentButtons();
+    this.setSegmentActive(this.activeTab === 'po' ? this.poFilter : this.ipoFilter);
+    this._inited = true;
+  },
+
+  bindSegmentButtons() {
+    document.querySelectorAll('.ipo-segment-btn').forEach((btn) => {
+      btn.replaceWith(btn.cloneNode(true));
+    });
     document.querySelectorAll('.ipo-segment-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         const filter = btn.dataset.filter;
@@ -138,14 +148,28 @@ const IpoPage = {
         }
       });
     });
+  },
 
-    this._inited = true;
+  renderSegmentForTab(tab) {
+    const segment = document.getElementById('ipoSegment');
+    if (!segment) return;
+    if (tab === 'po') {
+      segment.innerHTML =
+        '<button type="button" class="ipo-segment-btn active" data-filter="all" role="tab" aria-selected="true">すべて</button>' +
+        '<button type="button" class="ipo-segment-btn" data-filter="open" role="tab" aria-selected="false">受付中</button>' +
+        '<button type="button" class="ipo-segment-btn" data-filter="closed" role="tab" aria-selected="false">終了</button>';
+    } else {
+      segment.innerHTML =
+        '<button type="button" class="ipo-segment-btn active" data-filter="applying" role="tab" aria-selected="true">申込中</button>' +
+        '<button type="button" class="ipo-segment-btn" data-filter="awaiting_listing" role="tab" aria-selected="false">上場待ち</button>' +
+        '<button type="button" class="ipo-segment-btn" data-filter="scheduled" role="tab" aria-selected="false">予定</button>';
+    }
   },
 
   destroy() {
     this._inited = false;
     this.activeTab = 'ipo';
-    this.ipoFilter = 'all';
+    this.ipoFilter = 'applying';
     this.poFilter = 'all';
     this._ipoRetry = 0;
     this._poRetry = 0;
@@ -161,8 +185,8 @@ const IpoPage = {
     document.getElementById('ipoPanelIpo').classList.toggle('active', name === 'ipo');
     document.getElementById('ipoPanelPo').classList.toggle('active', name === 'po');
 
-    const openBtn = document.getElementById('ipoSegmentOpen');
-    if (openBtn) openBtn.textContent = name === 'po' ? '受付中' : '募集中';
+    this.renderSegmentForTab(name);
+    this.bindSegmentButtons();
 
     const filter = name === 'po' ? this.poFilter : this.ipoFilter;
     this.setSegmentActive(filter);
@@ -187,12 +211,19 @@ const IpoPage = {
     if (this.activeTab === 'po') {
       label.textContent = `受付中 ${meta.open_po_count ?? 0}件 · 更新 ${meta.updated || ''}`;
     } else {
-      label.textContent = `募集中 ${meta.open_ipo_count ?? 0}件 · 更新 ${meta.updated || ''}`;
+      label.textContent = `申込中 ${meta.applying_ipo_count ?? meta.open_ipo_count ?? 0}件 · 更新 ${meta.updated || ''}`;
     }
   },
 
   statusClass(status) {
-    return status === 'open' ? 'ipo-status-open' : 'ipo-status-closed';
+    const map = {
+      applying: 'ipo-status-applying',
+      awaiting_listing: 'ipo-status-awaiting',
+      scheduled: 'ipo-status-scheduled',
+      open: 'ipo-status-open',
+      closed: 'ipo-status-closed',
+    };
+    return map[status] || 'ipo-status-closed';
   },
 
   sbiRow(label, value, extraClass = '') {
@@ -279,7 +310,7 @@ const IpoPage = {
     const el = document.getElementById('ipoList');
     if (!el) return false;
     const filter = opts.filter ?? this.ipoFilter;
-    const q = filter !== 'all' ? `?status=${filter}` : '';
+    const q = `?status=${encodeURIComponent(filter)}`;
     const isRetry = !!opts.isRetry;
     if (!opts.silent && !isRetry) {
       this.setMetaLoading();
@@ -290,7 +321,12 @@ const IpoPage = {
       this._ipoRetry = 0;
       this.updatePageMeta(json.meta || {});
       if (!json.items.length) {
-        el.innerHTML = '<div class="ipo-empty">該当するIPOがありません</div>';
+        const emptyMsg = {
+          applying: '現在申込できるIPOはありません',
+          awaiting_listing: '上場待ちのIPOはありません',
+          scheduled: '予定のIPOはありません',
+        }[filter] || '該当するIPOがありません';
+        el.innerHTML = `<div class="ipo-empty">${ipoEscapeHtml(emptyMsg)}</div>`;
         resetAutoRetry?.('ipoList');
         return true;
       }

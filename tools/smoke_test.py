@@ -32,6 +32,13 @@ print(f"  ipo codes sample: {codes[:5]}")
 for need in ("581A", "584A"):
     print(f"{'OK' if need in codes else 'MISSING'} has {need}")
 print(f"  source: {j.get('meta', {}).get('source', '?')}")
+print(f"  applying: {j.get('meta', {}).get('applying_ipo_count', '?')}")
+print(f"  awaiting: {j.get('meta', {}).get('awaiting_ipo_count', '?')}")
+print(f"  scheduled: {j.get('meta', {}).get('scheduled_ipo_count', '?')}")
+ja = c.get("/api/ipo?status=applying").get_json()
+print(f"  applying filter items: {len(ja.get('items', []))}")
+listed = [i for i in j.get("items", []) if i.get("status") not in ("applying", "awaiting_listing", "scheduled")]
+print(f"{'OK' if not listed else 'FAIL'} all items have phase status")
 
 html = c.get("/").data.decode("utf-8", errors="ignore")
 for needle in ["data-tab-nav=\"ipo\"", "ipo.js", "homeMarketBarHost", "syncHomeOnlyChrome"]:

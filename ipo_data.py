@@ -10,6 +10,12 @@ from datetime import datetime
 
 from ipo_fetcher import fetch_ipo_catalog, get_cached_ipo_by_id
 
+IPO_STATUS_ORDER = {
+    "applying": 0,
+    "awaiting_listing": 1,
+    "scheduled": 2,
+}
+
 PO_CATALOG: list[dict] = [
     {
         "id": "po_sample_hd_2026",
@@ -105,15 +111,17 @@ def _list_fields_po(item: dict) -> dict:
 
 def get_ipo_list(status: str | None = None) -> list[dict]:
     items, _ = fetch_ipo_catalog()
-    if status == "open":
-        items = [i for i in items if i["status"] == "open"]
-    elif status == "closed":
-        items = [i for i in items if i["status"] == "closed"]
-    open_first = sorted(
+    valid = {"applying", "awaiting_listing", "scheduled"}
+    if status in valid:
+        items = [i for i in items if i["status"] == status]
+    items = sorted(
         items,
-        key=lambda x: (x["status"] != "open", x.get("listing_date") or ""),
+        key=lambda x: (
+            IPO_STATUS_ORDER.get(x["status"], 9),
+            x.get("listing_date") or "",
+        ),
     )
-    return [_list_fields_ipo(i) for i in open_first]
+    return [_list_fields_ipo(i) for i in items]
 
 
 def get_ipo_detail(ipo_id: str) -> dict | None:
@@ -135,7 +143,10 @@ def get_ipo_po_meta() -> dict:
         "updated": ipo_meta.get("updated") or datetime.now().strftime("%Y-%m-%d %H:%M"),
         "source": ipo_meta.get("source", "JPX（東証）"),
         "ipo_count": ipo_meta.get("ipo_count", 0),
+        "applying_ipo_count": ipo_meta.get("applying_ipo_count", 0),
+        "awaiting_ipo_count": ipo_meta.get("awaiting_ipo_count", 0),
+        "scheduled_ipo_count": ipo_meta.get("scheduled_ipo_count", 0),
+        "open_ipo_count": ipo_meta.get("applying_ipo_count", 0),
         "po_count": len(PO_CATALOG),
-        "open_ipo_count": ipo_meta.get("open_ipo_count", 0),
         "open_po_count": sum(1 for i in PO_CATALOG if i["status"] == "open"),
     }
