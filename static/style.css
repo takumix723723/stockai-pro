@@ -837,9 +837,14 @@ html.is-standalone .install-guide-modal {
 /* ホーム中心メニュー（SBI風） */
 .home-menu-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 10px;
   margin-bottom: 8px;
+}
+
+a.home-menu-card.home-menu-link {
+  text-decoration: none;
+  color: inherit;
 }
 
 .home-menu-card {
@@ -1577,6 +1582,25 @@ body.sub-panel-open .main-tabs {
 .bottom-nav-triple .bn-item-center .bn-label {
   font-weight: 600;
   color: inherit;
+}
+
+/* 4ボタンナビ — IPO追加 */
+.bottom-nav-quad {
+  padding: 4px 1px;
+}
+
+.bottom-nav-quad .bn-item {
+  flex: 1;
+  min-width: 0;
+}
+
+.bottom-nav-quad .bn-label {
+  font-size: 0.62rem;
+  letter-spacing: -0.02em;
+}
+
+.bottom-nav-quad .bn-icon {
+  font-size: 1.2rem;
 }
 
 .bn-badge {
@@ -3145,4 +3169,374 @@ body.stock-page {
   font-size: 0.85rem;
   color: var(--text-muted);
   line-height: 1.5;
+}
+
+/* ── IPO / PO ── */
+.ipo-page {
+  background: var(--bg);
+}
+
+.ipo-main {
+  padding: 12px 14px 0;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.ipo-subtabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.ipo-subtab {
+  flex: 1;
+  padding: 10px 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-card);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s, background 0.2s;
+}
+
+.ipo-subtab.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.ipo-filter-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.ipo-filter-row::-webkit-scrollbar {
+  display: none;
+}
+
+.ipo-filter {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ipo-filter.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.ipo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ipo-card {
+  display: block;
+  padding: 14px;
+  cursor: pointer;
+  transition: border-color 0.2s, transform 0.15s;
+}
+
+.ipo-card:active {
+  transform: scale(0.99);
+  border-color: var(--accent);
+}
+
+.ipo-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.ipo-card-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ipo-card-name {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.35;
+}
+
+.ipo-card-code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.ipo-fav-btn {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.ipo-fav-btn.is-on {
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.4);
+}
+
+.ipo-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.ipo-tag {
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.ipo-tag.market {
+  color: var(--accent);
+  border-color: rgba(59, 130, 246, 0.35);
+}
+
+.ipo-tag.ipo-status-open {
+  color: #34d399;
+  border-color: rgba(52, 211, 153, 0.35);
+  background: rgba(52, 211, 153, 0.08);
+}
+
+.ipo-tag.ipo-status-closed {
+  color: var(--text-muted);
+}
+
+.ipo-tag.discount {
+  color: #f472b6;
+  border-color: rgba(244, 114, 182, 0.35);
+}
+
+.ipo-card-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+}
+
+.ipo-kv {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ipo-kv-wide {
+  grid-column: 1 / -1;
+}
+
+.ipo-k {
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.ipo-v {
+  font-size: 0.78rem;
+  color: var(--text);
+  line-height: 1.35;
+}
+
+.ipo-v.highlight {
+  color: var(--accent);
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.ipo-empty {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.ipo-disclaimer {
+  margin: 16px 0 8px;
+  padding: 0 4px;
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+/* IPO詳細 */
+.ipo-detail-page .app-header .header-inner {
+  align-items: center;
+}
+
+.ipo-detail-hero {
+  padding: 16px;
+  margin-bottom: 4px;
+}
+
+.ipo-detail-price {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin: 12px 0 8px;
+}
+
+.ipo-detail-range {
+  font-size: 1.1rem;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.ipo-detail-expected {
+  font-size: 0.85rem;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.ipo-detail-dates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.ipo-detail-underwriter {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.ipo-text {
+  padding: 14px;
+  font-size: 0.85rem;
+  line-height: 1.65;
+  color: var(--text);
+}
+
+.ipo-pre {
+  white-space: pre-wrap;
+}
+
+.ipo-detail-grid {
+  padding: 14px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.ipo-vc-list {
+  padding: 4px 14px;
+}
+
+.ipo-vc-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.82rem;
+}
+
+.ipo-vc-row:last-child {
+  border-bottom: none;
+}
+
+.ipo-vc-ratio {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.ipo-vc-lock {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.ipo-ai-card {
+  padding: 16px;
+  text-align: center;
+}
+
+.ipo-ai-score {
+  font-size: 2.4rem;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--accent);
+  line-height: 1;
+}
+
+.ipo-ai-sub {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.ipo-ai-label {
+  margin-top: 6px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.ipo-ai-comment {
+  margin: 10px 0 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.55;
+  text-align: left;
+}
+
+.ipo-schedule {
+  padding: 4px 14px;
+}
+
+.ipo-schedule-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.82rem;
+}
+
+.ipo-schedule-row:last-child {
+  border-bottom: none;
+}
+
+.ipo-schedule-type {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.ipo-schedule-at {
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-muted);
+  font-size: 0.78rem;
 }

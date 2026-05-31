@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0f1c">
+  <link rel="manifest" href="/manifest.json">
+  <title>IPO詳細 - StockAI Pro</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+</head>
+<body class="ipo-page ipo-detail-page fade-in">
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="header-left">
+        <a href="/ipo" class="stock-back" aria-label="IPO一覧へ">←</a>
+        <div class="stock-header-titles">
+          <span class="stock-header-symbol" id="detailCode">—</span>
+          <span class="stock-header-name" id="detailName">読み込み中…</span>
+        </div>
+      </div>
+      <button type="button" class="ipo-fav-btn" id="detailFavBtn" aria-label="お気に入り">☆</button>
+    </div>
+  </header>
+
+  <div class="global-progress" id="globalProgress" aria-hidden="true"><div class="global-progress-bar"></div></div>
+
+  <main class="ipo-main" id="ipoDetailMain">
+    <div class="skeleton-block skeleton-lg"></div>
+    <div class="skeleton-line"></div>
+    <div class="skeleton-line"></div>
+  </main>
+
+  <nav class="bottom-nav bottom-nav-minimal bottom-nav-quad">
+    <a href="/" class="bn-item"><span class="bn-icon">🏠</span><span class="bn-label">ホーム</span></a>
+    <a href="/?tab=watchlist" class="bn-item"><span class="bn-icon">📋</span><span class="bn-label">登録銘柄</span></a>
+    <a href="/ipo" class="bn-item active"><span class="bn-icon">🆕</span><span class="bn-label">IPO</span></a>
+    <a href="/?tab=ranking" class="bn-item"><span class="bn-icon">📊</span><span class="bn-label">急騰急落</span></a>
+  </nav>
+
+  <script src="/static/script.js"></script>
+  <script src="/static/ipo.js"></script>
+  <script>
+    const IPO_ID = {{ ipo_id|tojson }};
+    document.addEventListener('DOMContentLoaded', () => {
+      IpoPage.initDetail(IPO_ID);
+    });
+  </script>
+</body>
+</html>

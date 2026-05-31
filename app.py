@@ -13,6 +13,8 @@ from datetime import datetime, timedelta
 import traceback
 import re
 
+from ipo_data import get_ipo_detail, get_ipo_list, get_ipo_po_meta, get_po_list
+
 
 def get_base_path():
     """開発時・PyInstaller 実行時のベースパス"""
@@ -2112,6 +2114,56 @@ def chart_legacy():
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)})
+
+
+@app.route("/ipo")
+def ipo_page():
+    return render_template("ipo.html")
+
+
+@app.route("/ipo/<ipo_id>")
+def ipo_detail_page(ipo_id):
+    return render_template("ipo_detail.html", ipo_id=ipo_id)
+
+
+@app.route("/api/ipo")
+def api_ipo_list():
+    status = request.args.get("status")
+    try:
+        return jsonify({
+            "status": "ok",
+            "meta": get_ipo_po_meta(),
+            "items": get_ipo_list(status),
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/ipo/<ipo_id>")
+def api_ipo_detail(ipo_id):
+    try:
+        item = get_ipo_detail(ipo_id)
+        if not item:
+            return jsonify({"status": "error", "message": "not found"}), 404
+        return jsonify({"status": "ok", "item": item, "meta": get_ipo_po_meta()})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/po")
+def api_po_list():
+    status = request.args.get("status")
+    try:
+        return jsonify({
+            "status": "ok",
+            "meta": get_ipo_po_meta(),
+            "items": get_po_list(status),
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 def run_flask_server(host="127.0.0.1", port=5000, debug=None):

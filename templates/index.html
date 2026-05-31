@@ -125,6 +125,11 @@
         <span class="home-menu-label">市場AI分析</span>
         <span class="home-menu-desc">指数・テーマ総合</span>
       </button>
+      <a href="/ipo" class="home-menu-card home-menu-link">
+        <span class="home-menu-icon">🆕</span>
+        <span class="home-menu-label">IPO・PO</span>
+        <span class="home-menu-desc">新規公開・売出</span>
+      </a>
     </div>
 
     <div class="section-title">🤖 市場AI要約</div>
@@ -166,16 +171,20 @@
     </div>
   </div>
 
-  <!-- ボトムナビ（ホーム / 登録銘柄 / 急騰急落） -->
-  <nav class="bottom-nav bottom-nav-minimal bottom-nav-triple">
+  <!-- ボトムナビ（ホーム / 登録銘柄 / IPO / 急騰急落） -->
+  <nav class="bottom-nav bottom-nav-minimal bottom-nav-quad">
     <a href="/" class="bn-item active" data-tab-nav="home">
       <span class="bn-icon">🏠</span>
       <span class="bn-label">ホーム</span>
     </a>
-    <a href="#" class="bn-item bn-item-center" data-tab-nav="watchlist">
+    <a href="#" class="bn-item" data-tab-nav="watchlist">
       <span class="bn-icon">📋</span>
       <span class="bn-label">登録銘柄</span>
       <span class="bn-badge" id="watchlistBadge" hidden>0</span>
+    </a>
+    <a href="/ipo" class="bn-item">
+      <span class="bn-icon">🆕</span>
+      <span class="bn-label">IPO</span>
     </a>
     <a href="#" class="bn-item" data-tab-nav="ranking">
       <span class="bn-icon">📊</span>
@@ -277,6 +286,11 @@
       updateWatchlistBadge();
       setupHomeLazyLoad();
       initIndexAutoRefresh();
+
+      const urlTab = new URLSearchParams(window.location.search).get('tab');
+      if (urlTab && ['watchlist', 'ranking'].includes(urlTab)) {
+        switchTab(urlTab);
+      }
     }
 
     function initIndexAutoRefresh() {
