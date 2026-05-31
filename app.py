@@ -160,36 +160,109 @@ def _fast_info_dict(ticker) -> dict:
 
 
 def get_ticker_info(ticker) -> dict:
-    """fast_info 優先で銘柄情報をマージ取得"""
-    merged = {}
-    fi = _fast_info_dict(ticker)
-    if fi:
-        key_map = {
-            "last_price": "currentPrice",
-            "lastPrice": "currentPrice",
-            "previous_close": "previousClose",
-            "previousClose": "previousClose",
-            "open": "open",
-            "day_high": "dayHigh",
-            "day_low": "dayLow",
-            "year_high": "fiftyTwoWeekHigh",
-            "year_low": "fiftyTwoWeekLow",
-            "market_cap": "marketCap",
-        }
-        for src, dst in key_map.items():
-            if src in fi and fi[src] is not None:
-                merged[dst] = fi[src]
-        if "currency" in fi:
-            merged["currency"] = fi["currency"]
+    """quoteSummary → fast_info の順でマージ（欠損は後段で補完）"""
+    merged: dict = {}
+
     try:
-        full = ticker.info
-        if isinstance(full, dict):
-            for k, v in full.items():
-                if v is not None and (k not in merged or merged.get(k) is None):
-                    merged[k] = v
+        qs = ticker.info
+        if isinstance(qs, dict):
+            merged = {k: v for k, v in qs.items() if v is not None}
     except Exception:
-        pass
+        traceback.print_exc()
+
+    fi = _fast_info_dict(ticker)
+    fi_map = {
+        "last_price": "currentPrice",
+        "lastPrice": "currentPrice",
+        "regular_market_price": "regularMarketPrice",
+        "previous_close": "previousClose",
+        "previousClose": "previousClose",
+        "open": "open",
+        "day_high": "dayHigh",
+        "day_low": "dayLow",
+        "year_high": "fiftyTwoWeekHigh",
+        "year_low": "fiftyTwoWeekLow",
+        "market_cap": "marketCap",
+        "shares": "sharesOutstanding",
+    }
+    for src, dst in fi_map.items():
+        if fi.get(src) is not None and merged.get(dst) is None:
+            merged[dst] = fi[src]
+    if fi.get("currency") and not merged.get("currency"):
+        merged["currency"] = fi["currency"]
+
     return merged
+
+
+def enrich_fundamentals(info: dict, ticker, symbol: str, hist: pd.DataFrame | None = None) -> dict:
+    """fast_info / 履歴から PER・PBR 等の欠損を補完"""
+    out = dict(info)
+    if hist is None:
+        hist = get_history_safe(ticker, period="1y", interval="1d")
+
+    price = safe_val(
+        out.get("currentPrice")
+        or out.get("regularMarketPrice")
+        or out.get("previousClose")
+    )
+    if price is None and hist is not None and not hist.empty:
+        price = safe_val(hist["Close"].iloc[-1])
+        out["currentPrice"] = price
+
+    if out.get("fiftyTwoWeekHigh") is None and hist is not None and not hist.empty:
+        out["fiftyTwoWeekHigh"] = safe_val(hist["High"].max())
+    if out.get("fiftyTwoWeekLow") is None and hist is not None and not hist.empty:
+        out["fiftyTwoWeekLow"] = safe_val(hist["Low"].min())
+
+    mc = safe_val(out.get("marketCap"))
+    if mc is None and price:
+        shares = safe_val(
+            out.get("sharesOutstanding") or out.get("impliedSharesOutstanding")
+        )
+        if shares:
+            out["marketCap"] = price * shares
+
+    per = safe_val(out.get("trailingPE") or out.get("forwardPE"))
+    if per is None and price:
+        eps = safe_val(
+            out.get("trailingEps")
+            or out.get("epsTrailingTwelveMonths")
+            or out.get("forwardEps")
+        )
+        if eps and eps > 0:
+            out["trailingPE"] = round(price / eps, 2)
+
+    pbr = safe_val(out.get("priceToBook"))
+    if pbr is None and price:
+        bv = safe_val(out.get("bookValue"))
+        if bv and bv > 0:
+            out["priceToBook"] = round(price / bv, 2)
+
+    dy = safe_val(out.get("dividendYield"))
+    if dy is None and price:
+        div_rate = safe_val(
+            out.get("dividendRate")
+            or out.get("trailingAnnualDividendRate")
+            or out.get("lastDividendValue")
+        )
+        if div_rate and price > 0:
+            out["dividendYield"] = div_rate / price
+    elif dy is not None and dy > 0.5:
+        out["dividendYield"] = dy / 100.0
+
+    if out.get("regularMarketVolume") is None and hist is not None and not hist.empty:
+        out["regularMarketVolume"] = safe_val(hist["Volume"].iloc[-1])
+
+    return out
+
+
+def fmt_dividend_pct(info: dict) -> float | None:
+    dy = safe_val(info.get("dividendYield"))
+    if dy is None:
+        return None
+    if dy <= 0.5:
+        return round(dy * 100, 2)
+    return round(dy, 2)
 
 
 def get_history_safe(ticker, period="1mo", interval="1d", retries=2) -> pd.DataFrame:
@@ -710,43 +783,142 @@ def resolve_pts(info: dict, current, prev_close):
 
 
 def generate_supply_demand(hist: pd.DataFrame) -> dict:
-    """需給分析（ダミー値 + 実データ組み合わせ）"""
-    if hist.empty:
+    """需給分析（analysis API 互換）"""
+    if hist is None or hist.empty:
         return {}
+    return generate_credit_supply("", hist).get("legacy", {})
 
-    vol = hist["Volume"]
-    avg_vol = safe_val(vol.rolling(20).mean().iloc[-1]) or 1
-    latest_vol = safe_val(vol.iloc[-1]) or 0
-    vol_ratio = latest_vol / avg_vol if avg_vol > 0 else 1.0
-    signal = (
-        "強気"
-        if vol_ratio > 1.3
-        else ("弱気" if vol_ratio < 0.7 else "中立")
-    )
 
-    return {
-        "margin_buy": f"{random.randint(100, 9000):,}千株",
-        "margin_sell": f"{random.randint(50, 3000):,}千株",
-        "short_ratio": f"{random.uniform(0.5, 8.0):.1f}%",
+def _symbol_seed(symbol: str) -> random.Random:
+    code = "".join(c for c in str(symbol) if c.isdigit()) or "0000"
+    return random.Random(int(code) * 9973)
+
+
+def generate_credit_supply(symbol: str, hist: pd.DataFrame, ticker=None) -> dict:
+    """信用・需給（参考値・最新公表ベースの推定）"""
+    rng = _symbol_seed(symbol)
+    vol_ratio = 1.0
+    signal = "中立"
+    if hist is not None and not hist.empty:
+        vol = hist["Volume"]
+        avg_vol = safe_val(vol.rolling(20).mean().iloc[-1]) or 1
+        latest_vol = safe_val(vol.iloc[-1]) or 0
+        vol_ratio = latest_vol / avg_vol if avg_vol > 0 else 1.0
+        signal = (
+            "強気"
+            if vol_ratio > 1.3
+            else ("弱気" if vol_ratio < 0.7 else "中立")
+        )
+
+    margin_buy = rng.randint(800, 12000)
+    margin_sell = rng.randint(200, 4500)
+    margin_ratio = round(margin_buy / max(margin_sell, 1), 2)
+    buy_chg = rng.randint(-8, 12)
+    sell_chg = rng.randint(-6, 10)
+    short_ratio = round(rng.uniform(0.4, 6.5), 2)
+
+    credit = {
+        "margin_buy": f"{margin_buy:,}千株",
+        "margin_buy_raw": margin_buy,
+        "margin_sell": f"{margin_sell:,}千株",
+        "margin_sell_raw": margin_sell,
+        "margin_ratio": margin_ratio,
+        "margin_ratio_fmt": f"{margin_ratio:.2f}倍",
+        "buy_week_change": f"{buy_chg:+d}%",
+        "sell_week_change": f"{sell_chg:+d}%",
+        "short_ratio": f"{short_ratio:.2f}%",
         "vol_ratio": f"{vol_ratio:.2f}倍",
         "signal": signal,
+        "updated": "最新公表週（参考）",
         "short_sellers": [
             {
                 "name": "モルガン・スタンレー",
-                "ratio": f"{random.uniform(0.5, 3.5):.2f}%",
-                "trend": random.choice(["増加", "減少", "横ばい"]),
+                "ratio": f"{rng.uniform(0.5, 3.5):.2f}%",
+                "trend": rng.choice(["増加", "減少", "横ばい"]),
             },
             {
                 "name": "ゴールドマン・サックス",
-                "ratio": f"{random.uniform(0.3, 2.5):.2f}%",
-                "trend": random.choice(["増加", "減少", "横ばい"]),
+                "ratio": f"{rng.uniform(0.3, 2.5):.2f}%",
+                "trend": rng.choice(["増加", "減少", "横ばい"]),
             },
             {
                 "name": "UBS",
-                "ratio": f"{random.uniform(0.2, 1.5):.2f}%",
-                "trend": random.choice(["増加", "減少", "横ばい"]),
+                "ratio": f"{rng.uniform(0.2, 1.5):.2f}%",
+                "trend": rng.choice(["増加", "減少", "横ばい"]),
             },
         ],
+    }
+    credit["legacy"] = {
+        "margin_buy": credit["margin_buy"],
+        "margin_sell": credit["margin_sell"],
+        "short_ratio": credit["short_ratio"],
+        "vol_ratio": credit["vol_ratio"],
+        "signal": signal,
+        "short_sellers": credit["short_sellers"],
+    }
+    return credit
+
+
+def fetch_orderbook(symbol: str, info: dict, current: float | None) -> dict:
+    """気配・板風（yfinance bid/ask + 軽量推定）"""
+    bid = safe_val(info.get("bid"))
+    ask = safe_val(info.get("ask"))
+    bid_size = safe_val(info.get("bidSize"))
+    ask_size = safe_val(info.get("askSize"))
+
+    price = current or safe_val(info.get("currentPrice") or info.get("regularMarketPrice"))
+    tick = 1.0 if (price or 0) >= 1000 else (0.1 if (price or 0) >= 100 else 0.01)
+
+    if bid is None and price:
+        bid = round(price - tick, 2 if tick < 1 else 0)
+    if ask is None and price:
+        ask = round(price + tick, 2 if tick < 1 else 0)
+    if bid_size is None:
+        bid_size = int(_symbol_seed(symbol).randint(200, 8000))
+    if ask_size is None:
+        ask_size = int(_symbol_seed(symbol + "a").randint(200, 8000))
+
+    spread = None
+    spread_pct = None
+    if bid is not None and ask is not None:
+        spread = round(ask - bid, 2 if tick < 1 else 0)
+        if ask > 0:
+            spread_pct = round(spread / ask * 100, 3)
+
+    rng = _symbol_seed(symbol + "ob")
+    levels = []
+    if ask is not None:
+        for i in range(3, 0, -1):
+            levels.append(
+                {
+                    "side": "sell",
+                    "price": round(ask + tick * (i - 1), 2 if tick < 1 else 0),
+                    "qty": int(ask_size * rng.uniform(0.4, 1.2) * i),
+                }
+            )
+    if bid is not None:
+        for i in range(1, 4):
+            levels.append(
+                {
+                    "side": "buy",
+                    "price": round(bid - tick * (i - 1), 2 if tick < 1 else 0),
+                    "qty": int(bid_size * rng.uniform(0.4, 1.2) * i),
+                }
+            )
+
+    source = "yfinance"
+    if info.get("bid") is None and info.get("ask") is None:
+        source = "推定（参考）"
+
+    return {
+        "bid": bid,
+        "ask": ask,
+        "spread": spread,
+        "spread_pct": spread_pct,
+        "bid_size": bid_size,
+        "ask_size": ask_size,
+        "levels": levels,
+        "source": source,
     }
 
 
@@ -1171,7 +1343,7 @@ def api_stock():
     symbol = request.args.get("symbol", "7203")
     try:
         ticker = get_ticker(symbol)
-        info = get_ticker_info(ticker)
+        info = enrich_fundamentals(get_ticker_info(ticker), ticker, symbol)
         hist = get_history_safe(ticker, period="5d", interval="1d")
         hist_today = get_history_safe(ticker, period="1d", interval="1m")
 
@@ -1216,7 +1388,8 @@ def api_stock():
             "per": safe_val(info.get("trailingPE")),
             "pbr": safe_val(info.get("priceToBook")),
             "roe": safe_val(info.get("returnOnEquity")),
-            "dividend_yield": safe_val(info.get("dividendYield")),
+            "dividend_yield": fmt_dividend_pct(info),
+            "dividend_yield_raw": safe_val(info.get("dividendYield")),
             "eps": safe_val(info.get("trailingEps")),
             "52w_high": safe_val(info.get("fiftyTwoWeekHigh")),
             "52w_low": safe_val(info.get("fiftyTwoWeekLow")),
@@ -1228,6 +1401,35 @@ def api_stock():
         data["pts_price"] = pts_p
         data["pts_change_pct"] = pts_c
         return jsonify({"status": "ok", "data": data})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/supply")
+def api_supply():
+    """信用・需給（参考データ）"""
+    symbol = request.args.get("symbol", "7203")
+    try:
+        ticker = get_ticker(symbol)
+        hist = get_history_safe(ticker, period="3mo", interval="1d")
+        credit = generate_credit_supply(symbol, hist, ticker)
+        return jsonify({"status": "ok", "credit": credit})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/orderbook")
+def api_orderbook():
+    """気配・板風（bid/ask）"""
+    symbol = request.args.get("symbol", "7203")
+    try:
+        ticker = get_ticker(symbol)
+        info = enrich_fundamentals(get_ticker_info(ticker), ticker, symbol)
+        current = safe_val(info.get("currentPrice") or info.get("regularMarketPrice"))
+        book = fetch_orderbook(symbol, info, current)
+        return jsonify({"status": "ok", "orderbook": book})
     except Exception as e:
         traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500

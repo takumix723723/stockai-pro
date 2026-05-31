@@ -1806,15 +1806,252 @@ body.stock-page {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
-  min-height: 300px;
+  min-height: 360px;
   width: 100%;
   max-width: 100%;
+}
+
+.chart-overlay-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.chart-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.chart-toggle.is-on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(59, 130, 246, 0.12);
+}
+
+.chart-toggle input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.stock-subtabs {
+  display: flex;
+  gap: 8px;
+  margin: 16px 0 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.stock-subtabs::-webkit-scrollbar {
+  display: none;
+}
+
+.stock-subtab {
+  flex: 0 0 auto;
+  padding: 10px 16px;
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-card);
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.stock-subtab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.stock-subpanel[hidden] {
+  display: none !important;
+}
+
+.supply-meta,
+.ob-source {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
+.supply-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.supply-stat {
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+}
+
+.supply-k {
+  display: block;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.supply-v {
+  display: block;
+  font-family: var(--mono);
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.supply-v.highlight {
+  color: var(--accent);
+}
+
+.supply-sub {
+  display: block;
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.supply-short-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.supply-short-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.82rem;
+}
+
+.supply-short-ratio {
+  font-family: var(--mono);
+  color: var(--accent);
+}
+
+.ob-best-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 8px;
+  margin-bottom: 14px;
+  align-items: center;
+}
+
+.ob-best-item {
+  text-align: center;
+  padding: 10px 6px;
+  border-radius: 10px;
+  background: var(--bg-elevated);
+}
+
+.ob-k {
+  display: block;
+  font-size: 0.65rem;
+  color: var(--text-muted);
+}
+
+.ob-v {
+  display: block;
+  font-family: var(--mono);
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 4px 0;
+}
+
+.ob-v.bid {
+  color: var(--up);
+}
+
+.ob-v.ask {
+  color: var(--down);
+}
+
+.ob-spread {
+  text-align: center;
+  padding: 8px;
+}
+
+.ob-sub {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+}
+
+.ob-board-head,
+.ob-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
+  align-items: center;
+  text-align: center;
+  font-size: 0.8rem;
+}
+
+.ob-board-head {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.ob-row {
+  padding: 7px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.ob-row-sell .ob-price {
+  color: var(--down);
+}
+
+.ob-row-buy .ob-price {
+  color: var(--up);
+}
+
+.ob-qty {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+}
+
+.ob-qty.sell {
+  color: var(--down);
+  text-align: left;
+  padding-left: 8px;
+}
+
+.ob-qty.buy {
+  color: var(--up);
+  text-align: right;
+  padding-right: 8px;
+}
+
+.ob-row-mid {
+  background: var(--bg-elevated);
+  font-size: 0.72rem;
+  color: var(--text-muted);
 }
 
 .stock-chart-container {
   width: 100% !important;
   max-width: 100%;
-  min-height: min(52vh, 420px);
+  min-height: min(55vh, 480px);
 }
 
 .offline-page {

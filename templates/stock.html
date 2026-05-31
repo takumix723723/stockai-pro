@@ -55,10 +55,11 @@
     </div>
 
     <section class="stock-chart-wrap card-premium">
-      <div class="chart-legend">
-        <span class="legend-item"><i class="legend-dot ma5"></i>MA5</span>
-        <span class="legend-item"><i class="legend-dot ma25"></i>MA25</span>
-        <span class="legend-item"><i class="legend-dot ma75"></i>MA75</span>
+      <div class="chart-overlay-toggles" id="chartToggles">
+        <label class="chart-toggle"><input type="checkbox" data-layer="ma5"> MA5</label>
+        <label class="chart-toggle is-on"><input type="checkbox" data-layer="ma25" checked> MA25</label>
+        <label class="chart-toggle"><input type="checkbox" data-layer="ma75"> MA75</label>
+        <label class="chart-toggle"><input type="checkbox" data-layer="bb"> ボリンジャー</label>
       </div>
       <div id="chartContainer" class="stock-chart-container"></div>
       <div class="chart-loading" id="chartLoading">チャート読み込み中...</div>
@@ -67,12 +68,38 @@
       </div>
     </section>
 
+    <nav class="stock-subtabs" id="stockSubtabs">
+      <button type="button" class="stock-subtab active" data-subtab="technical">テクニカル</button>
+      <button type="button" class="stock-subtab" data-subtab="supply">需給/信用</button>
+      <button type="button" class="stock-subtab" data-subtab="orderbook">気配</button>
+    </nav>
+
+    <div class="stock-subpanel active" id="subpanel-technical">
     <section class="section-block">
       <h2 class="section-title">📐 テクニカル分析 <span class="tech-period-badge" id="techPeriodBadge">1月</span></h2>
       <div class="tech-panel card-premium" id="techPanel">
         <div class="skeleton-block"></div>
       </div>
     </section>
+    </div>
+
+    <div class="stock-subpanel" id="subpanel-supply" hidden>
+      <section class="section-block">
+        <h2 class="section-title">📊 需給 / 信用</h2>
+        <div class="supply-panel card-premium" id="supplyPanel">
+          <div class="skeleton-block"></div>
+        </div>
+      </section>
+    </div>
+
+    <div class="stock-subpanel" id="subpanel-orderbook" hidden>
+      <section class="section-block">
+        <h2 class="section-title">📋 気配値</h2>
+        <div class="orderbook-panel card-premium" id="orderbookPanel">
+          <div class="skeleton-block"></div>
+        </div>
+      </section>
+    </div>
 
     <section class="section-block">
       <h2 class="section-title">🏭 セクター比較</h2>
@@ -114,8 +141,17 @@
     let chartInstance = null;
     let candleSeries = null;
     let lineSeriesList = [];
+    let lastChartJson = null;
     let currentPeriod = '1mo';
+    const chartLayers = { ma5: false, ma25: true, ma75: false, bb: false };
+    const subpanelLoaded = { supply: false, orderbook: false };
     const PERIOD_LABELS = { '1d': '1日', '1w': '1週', '1mo': '1月', '3mo': '3月', '1y': '1年' };
+
+    function chartHeight() {
+      const vh = window.innerHeight;
+      if (vh < 700) return Math.max(360, Math.min(480, vh * 0.52));
+      return Math.max(380, Math.min(560, vh * 0.48));
+    }
 
     document.addEventListener('DOMContentLoaded', () => {
       const savedTheme = localStorage.getItem('theme');
@@ -130,6 +166,19 @@
         });
       });
 
+      document.querySelectorAll('#chartToggles input[data-layer]').forEach((input) => {
+        input.addEventListener('change', () => {
+          const layer = input.dataset.layer;
+          chartLayers[layer] = input.checked;
+          input.closest('.chart-toggle')?.classList.toggle('is-on', input.checked);
+          applyChartLayers();
+        });
+      });
+
+      document.querySelectorAll('.stock-subtab').forEach((btn) => {
+        btn.addEventListener('click', () => switchStockSubtab(btn.dataset.subtab));
+      });
+
       document.querySelector('[data-retry="chart"]')?.addEventListener('click', () => loadChart(currentPeriod));
 
       loadStock();
@@ -140,6 +189,19 @@
       loadNews();
       window.addEventListener('resize', resizeChart);
     });
+
+    function switchStockSubtab(name) {
+      document.querySelectorAll('.stock-subtab').forEach((b) => {
+        b.classList.toggle('active', b.dataset.subtab === name);
+      });
+      document.querySelectorAll('.stock-subpanel').forEach((p) => {
+        const on = p.id === `subpanel-${name}`;
+        p.classList.toggle('active', on);
+        p.hidden = !on;
+      });
+      if (name === 'supply' && !subpanelLoaded.supply) loadSupply();
+      if (name === 'orderbook' && !subpanelLoaded.orderbook) loadOrderbook();
+    }
 
     function fmtPrice(n) {
       if (n == null || Number.isNaN(n)) return '—';
@@ -297,7 +359,7 @@
           <div class="stat-item card-premium"><span class="stat-label">時価総額</span><span class="stat-val">${escapeHtml(d.market_cap_fmt || '—')}</span></div>
           <div class="stat-item card-premium"><span class="stat-label">PER</span><span class="stat-val">${fmtNum(d.per)}</span></div>
           <div class="stat-item card-premium"><span class="stat-label">PBR</span><span class="stat-val">${fmtNum(d.pbr)}</span></div>
-          <div class="stat-item card-premium"><span class="stat-label">配当利回り</span><span class="stat-val">${d.dividend_yield != null ? (d.dividend_yield < 0.3 ? (d.dividend_yield * 100).toFixed(2) : d.dividend_yield.toFixed(2)) + '%' : '—'}</span></div>
+          <div class="stat-item card-premium"><span class="stat-label">配当利回り</span><span class="stat-val">${d.dividend_yield != null ? d.dividend_yield.toFixed(2) + '%' : '—'}</span></div>
           <div class="stat-item card-premium"><span class="stat-label">出来高</span><span class="stat-val">${d.volume != null ? fmtNum(d.volume, 0) : '—'}</span></div>
           <div class="stat-item card-premium"><span class="stat-label">52週</span><span class="stat-val">${fmtPrice(d['52w_low'])} – ${fmtPrice(d['52w_high'])}</span></div>
         `;
@@ -351,6 +413,86 @@
         panel.innerHTML = '<div class="stock-error">AI分析失敗 <button type="button" class="retry-btn" onclick="loadAiCard()">再試行</button></div>';
       }
     }
+
+    async function loadSupply() {
+      const panel = document.getElementById('supplyPanel');
+      panel.innerHTML = '<div class="skeleton-block"></div>';
+      try {
+        const res = await fetchWithProgress(`/api/supply?symbol=${encodeURIComponent(SYMBOL)}`);
+        const json = await res.json();
+        if (json.status !== 'ok' || !json.credit) throw new Error('failed');
+        const c = json.credit;
+        subpanelLoaded.supply = true;
+        panel.innerHTML = `
+          <div class="supply-meta">${escapeHtml(c.updated || '')}</div>
+          <div class="supply-grid">
+            <div class="supply-stat"><span class="supply-k">信用買残</span><span class="supply-v">${escapeHtml(c.margin_buy)}</span><span class="supply-sub">前週比 ${escapeHtml(c.buy_week_change)}</span></div>
+            <div class="supply-stat"><span class="supply-k">信用売残</span><span class="supply-v">${escapeHtml(c.margin_sell)}</span><span class="supply-sub">前週比 ${escapeHtml(c.sell_week_change)}</span></div>
+            <div class="supply-stat"><span class="supply-k">信用倍率</span><span class="supply-v highlight">${escapeHtml(c.margin_ratio_fmt)}</span></div>
+            <div class="supply-stat"><span class="supply-k">空売り比率</span><span class="supply-v">${escapeHtml(c.short_ratio)}</span></div>
+            <div class="supply-stat"><span class="supply-k">出来高倍率</span><span class="supply-v">${escapeHtml(c.vol_ratio)}</span></div>
+            <div class="supply-stat"><span class="supply-k">需給シグナル</span><span class="supply-v">${escapeHtml(c.signal)}</span></div>
+          </div>
+          <div class="supply-short-title">空売り残高（参考）</div>
+          ${(c.short_sellers || []).map((s) => `
+            <div class="supply-short-row">
+              <span>${escapeHtml(s.name)}</span>
+              <span class="supply-short-ratio">${escapeHtml(s.ratio)}</span>
+              <span class="supply-short-trend">${escapeHtml(s.trend)}</span>
+            </div>
+          `).join('')}
+        `;
+      } catch (e) {
+        panel.innerHTML = '<div class="load-fail">読み込み失敗 <button type="button" class="retry-btn" onclick="loadSupply()">再試行</button></div>';
+      }
+    }
+    window.loadSupply = loadSupply;
+
+    async function loadOrderbook() {
+      const panel = document.getElementById('orderbookPanel');
+      panel.innerHTML = '<div class="skeleton-block"></div>';
+      try {
+        const res = await fetchWithProgress(`/api/orderbook?symbol=${encodeURIComponent(SYMBOL)}`);
+        const json = await res.json();
+        if (json.status !== 'ok' || !json.orderbook) throw new Error('failed');
+        const b = json.orderbook;
+        subpanelLoaded.orderbook = true;
+        const sells = (b.levels || []).filter((l) => l.side === 'sell').sort((a, c) => c.price - a.price);
+        const buys = (b.levels || []).filter((l) => l.side === 'buy').sort((a, c) => c.price - a.price);
+
+        panel.innerHTML = `
+          <div class="ob-source">${escapeHtml(b.source || '')}</div>
+          <div class="ob-best-row">
+            <div class="ob-best-item"><span class="ob-k">Best Bid</span><span class="ob-v bid">${fmtPrice(b.bid)}</span><span class="ob-q">${b.bid_size != null ? fmtNum(b.bid_size, 0) + '株' : '—'}</span></div>
+            <div class="ob-spread"><span class="ob-k">Spread</span><span class="ob-v">${b.spread != null ? fmtNum(b.spread) : '—'}</span><span class="ob-sub">${b.spread_pct != null ? b.spread_pct + '%' : ''}</span></div>
+            <div class="ob-best-item"><span class="ob-k">Best Ask</span><span class="ob-v ask">${fmtPrice(b.ask)}</span><span class="ob-q">${b.ask_size != null ? fmtNum(b.ask_size, 0) + '株' : '—'}</span></div>
+          </div>
+          <div class="ob-board-head"><span>売数量</span><span>値段</span><span>買数量</span></div>
+          <div class="ob-board">
+            ${sells.map((l) => `
+              <div class="ob-row ob-row-sell">
+                <span class="ob-qty sell">${fmtNum(l.qty, 0)}</span>
+                <span class="ob-price">${fmtPrice(l.price)}</span>
+                <span class="ob-qty"></span>
+              </div>
+            `).join('')}
+            <div class="ob-row ob-row-mid">
+              <span></span><span class="ob-mid-label">気配</span><span></span>
+            </div>
+            ${buys.map((l) => `
+              <div class="ob-row ob-row-buy">
+                <span class="ob-qty"></span>
+                <span class="ob-price">${fmtPrice(l.price)}</span>
+                <span class="ob-qty buy">${fmtNum(l.qty, 0)}</span>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      } catch (e) {
+        panel.innerHTML = '<div class="load-fail">読み込み失敗 <button type="button" class="retry-btn" onclick="loadOrderbook()">再試行</button></div>';
+      }
+    }
+    window.loadOrderbook = loadOrderbook;
 
     async function loadNews() {
       const list = document.getElementById('newsList');
@@ -436,22 +578,43 @@
       const container = document.getElementById('chartContainer');
       chartInstance.applyOptions({
         width: container.clientWidth,
-        height: Math.max(300, Math.min(520, window.innerHeight * 0.52)),
+        height: chartHeight(),
       });
+    }
+
+    function clearLineSeries() {
+      lineSeriesList.forEach((s) => {
+        try { chartInstance.removeSeries(s); } catch (_) {}
+      });
+      lineSeriesList = [];
     }
 
     function addMaLine(indicators, key, period) {
       const data = mapLine(indicators[key], period);
       if (!data.length) return;
       const series = chartInstance.addSeries(LightweightCharts.LineSeries, {
-        color: MA_COLORS[key],
-        lineWidth: 2,
+        color: MA_COLORS[key] || MA_COLORS.ma25,
+        lineWidth: key.startsWith('bb') ? 1 : 2,
         priceScaleId: 'right',
         lastValueVisible: false,
         priceLineVisible: false,
       });
       series.setData(data);
       lineSeriesList.push(series);
+    }
+
+    function applyChartLayers() {
+      if (!chartInstance || !lastChartJson) return;
+      clearLineSeries();
+      const ind = lastChartJson.indicators || {};
+      const period = lastChartJson.period || currentPeriod;
+      if (chartLayers.ma5) addMaLine(ind, 'ma5', period);
+      if (chartLayers.ma25) addMaLine(ind, 'ma25', period);
+      if (chartLayers.ma75) addMaLine(ind, 'ma75', period);
+      if (chartLayers.bb) {
+        addMaLine(ind, 'bb_upper', period);
+        addMaLine(ind, 'bb_lower', period);
+      }
     }
 
     async function loadChart(period) {
@@ -478,7 +641,7 @@
 
         const container = document.getElementById('chartContainer');
         const w = container.clientWidth || container.parentElement.clientWidth;
-        const h = Math.max(300, Math.min(500, window.innerHeight * 0.48));
+        const h = chartHeight();
 
         chartInstance = LightweightCharts.createChart(container, getChartOptions(w, h, period));
 
@@ -494,12 +657,8 @@
         });
         candleSeries.setData(mapCandles(json.candles, period));
 
-        const ind = json.indicators || {};
-        addMaLine(ind, 'ma5', period);
-        addMaLine(ind, 'ma25', period);
-        addMaLine(ind, 'ma75', period);
-        addMaLine(ind, 'bb_upper', period);
-        addMaLine(ind, 'bb_lower', period);
+        lastChartJson = { ...json, period };
+        applyChartLayers();
 
         renderTechnical(json.technical);
 
