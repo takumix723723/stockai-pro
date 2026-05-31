@@ -85,8 +85,11 @@
 
   <!-- 市場指数バー -->
   <div class="market-bar" id="marketBar">
-    <div class="market-ticker" id="marketTicker">
-      <span class="mt-loading">市場データ読み込み中...</span>
+    <div class="market-bar-row">
+      <div class="market-ticker" id="marketTicker">
+        <span class="mt-loading">市場データ読み込み中...</span>
+      </div>
+      <span class="live-sync" id="liveSyncStatus" aria-live="polite"></span>
     </div>
   </div>
 
@@ -255,6 +258,37 @@
       loadMarketIndices();
       updateWatchlistBadge();
       setupHomeLazyLoad();
+      initIndexAutoRefresh();
+    }
+
+    function initIndexAutoRefresh() {
+      if (!window.createPageAutoRefresh) return;
+      const autoRefresh = createPageAutoRefresh({
+        intervalMs: 30000,
+        onRefresh: () => refreshIndexPage(),
+      });
+      autoRefresh.start();
+      window._indexAutoRefresh = autoRefresh;
+    }
+
+    async function refreshIndexPage() {
+      if (document.hidden) return;
+      setLiveSyncStatus('liveSyncStatus', '更新中…', true);
+
+      const tasks = [loadMarketIndices({ silent: true })];
+
+      if (currentMainTab === 'home' && tabLoaded.home) {
+        tasks.push(loadHomeContent({ silent: true }));
+      } else if (currentMainTab === 'ranking' && tabLoaded.ranking) {
+        tasks.push(loadRanking({ silent: true }));
+      } else if (currentMainTab === 'watchlist' && tabLoaded.watchlist) {
+        tasks.push(loadWatchlistContent({ silent: true }));
+      }
+
+      tasks.push(loadNotifications({ silent: true }));
+
+      await Promise.allSettled(tasks);
+      setLiveSyncStatus('liveSyncStatus', formatLiveTime());
     }
 
     function setupHomeLazyLoad() {
@@ -481,10 +515,11 @@
       return String(changeStr).trim().startsWith('+') ? 'up' : 'down';
     }
 
-    async function loadMarketIndices() {
+    async function loadMarketIndices(opts = {}) {
+      const silent = !!opts.silent;
       const ticker = document.getElementById('marketTicker');
       try {
-        const res = await fetch('/api/market_indices');
+        const res = silent ? await fetchSilent('/api/market_indices') : await fetch('/api/market_indices');
         const data = await res.json();
         if (data.status !== 'ok') throw new Error('failed');
 
@@ -496,27 +531,33 @@
             <span class="mt-chg ${chgClass(i.change)}">${escapeHtml(i.change)}</span>
           </span>
         `).join('') + (meta ? `<span class="mt-updated">${escapeHtml(meta)}</span>` : '');
+        if (!silent) setLiveSyncStatus('liveSyncStatus', formatLiveTime());
       } catch (e) {
         console.error(e);
-        ticker.innerHTML = '<span class="mt-loading">指数取得失敗 <button type="button" class="retry-btn" onclick="loadMarketIndices()">再試行</button></span>';
+        if (!silent) {
+          ticker.innerHTML = '<span class="mt-loading">指数取得失敗 <button type="button" class="retry-btn" onclick="loadMarketIndices()">再試行</button></span>';
+        }
       }
     }
     window.loadMarketIndices = loadMarketIndices;
 
-    async function loadHomeContent() {
+    async function loadHomeContent(opts = {}) {
+      const silent = !!opts.silent;
       const themesEl = document.getElementById('marketThemes');
       const aiCard = document.getElementById('aiSummaryCard');
-      themesEl.innerHTML = `<div class="skeleton-list">${skeletonCards(3)}</div>`;
-      aiCard.innerHTML = '<div class="skeleton-block skeleton-lg"></div><div class="skeleton-line"></div><div class="skeleton-line skeleton-sm"></div>';
+      if (!silent) {
+        themesEl.innerHTML = `<div class="skeleton-list">${skeletonCards(3)}</div>`;
+        aiCard.innerHTML = '<div class="skeleton-block skeleton-lg"></div><div class="skeleton-line"></div><div class="skeleton-line skeleton-sm"></div>';
+      }
       try {
-        const res = await fetch('/api/market_summary');
+        const res = silent ? await fetchSilent('/api/market_summary') : await fetch('/api/market_summary');
         const data = await res.json();
         if (data.status !== 'ok') throw new Error('failed');
 
         themesEl.innerHTML = `
           <div class="theme-grid">
             ${data.themes.map((t) => `
-              <div class="theme-card card-premium ${escapeHtml(t.color)} fade-in">
+              <div class="theme-card card-premium ${escapeHtml(t.color)}${silent ? '' : ' fade-in'}">
                 <div class="theme-name">${escapeHtml(t.name)}</div>
                 <div class="theme-trend">${escapeHtml(t.trend)}</div>
                 <div class="theme-reason">${escapeHtml(t.reason || t.detail)}</div>
@@ -546,7 +587,9 @@
         `;
       } catch (e) {
         console.error(e);
-        themesEl.innerHTML = '<div class="load-fail">読み込み失敗 <button type="button" class="retry-btn" onclick="retryHomeContent()">再試行</button></div>';
+        if (!silent) {
+          themesEl.innerHTML = '<div class="load-fail">読み込み失敗 <button type="button" class="retry-btn" onclick="retryHomeContent()">再試行</button></div>';
+        }
       }
     }
 
@@ -610,11 +653,17 @@
     }
     window.retryMarketAi = retryMarketAi;
 
-    async function loadNotifications() {
+    async function loadNotifications(opts = {}) {
+      const silent = !!opts.silent;
+      const panelOpen = document.getElementById('notifPanel')?.classList.contains('open');
       try {
-        const res = await fetch('/api/notifications');
+        const res = silent ? await fetchSilent('/api/notifications') : await fetch('/api/notifications');
         const data = await res.json();
         if (data.status !== 'ok') return;
+
+        document.getElementById('notifBadge').textContent = String(data.notifications.length);
+
+        if (silent && !panelOpen) return;
 
         const list = document.getElementById('notifList');
         list.innerHTML = data.notifications.map((n) => {
@@ -634,20 +683,22 @@
         list.querySelectorAll('.notif-item').forEach((item) => {
           item.addEventListener('click', () => goToStock(item.dataset.symbol));
         });
-
-        document.getElementById('notifBadge').textContent = String(data.notifications.length);
       } catch (e) {
         console.error(e);
       }
     }
 
-    async function loadRanking() {
+    async function loadRanking(opts = {}) {
+      const silent = !!opts.silent;
       const gainersEl = document.getElementById('gainersList');
       const losersEl = document.getElementById('losersList');
-      gainersEl.innerHTML = `<div class="skeleton-list">${skeletonRankList()}</div>`;
-      losersEl.innerHTML = '';
+      if (!gainersEl) return;
+      if (!silent) {
+        gainersEl.innerHTML = `<div class="skeleton-list">${skeletonRankList()}</div>`;
+        losersEl.innerHTML = '';
+      }
       try {
-        const res = await fetch('/api/ranking');
+        const res = silent ? await fetchSilent('/api/ranking') : await fetch('/api/ranking');
         const data = await res.json();
         if (data.status !== 'ok') throw new Error('failed');
 
@@ -686,8 +737,10 @@
           card.addEventListener('click', () => goToStock(card.dataset.symbol));
         });
       } catch (e) {
-        gainersEl.innerHTML = '<div class="load-fail">読み込み失敗 <button type="button" class="retry-btn" onclick="retryRanking()">再試行</button></div>';
-        losersEl.innerHTML = '';
+        if (!silent) {
+          gainersEl.innerHTML = '<div class="load-fail">読み込み失敗 <button type="button" class="retry-btn" onclick="retryRanking()">再試行</button></div>';
+          losersEl.innerHTML = '';
+        }
       }
     }
 
@@ -816,7 +869,8 @@
       });
     }
 
-    function loadWatchlistContent() {
+    function loadWatchlistContent(opts = {}) {
+      const silent = !!opts.silent;
       const container = document.getElementById('watchlist');
       if (!container) return Promise.resolve();
       const saved = JSON.parse(localStorage.getItem('watchlist') || '[]');
@@ -824,21 +878,30 @@
 
       if (saved.length === 0) {
         if (toolbar) toolbar.style.display = 'none';
-        container.innerHTML = `
-          <div class="empty-watch card-premium">
-            <span class="empty-watch-icon">⭐</span>
-            <span>登録銘柄がありません</span>
-            <p class="empty-watch-hint">監視したい銘柄を追加して、毎日すぐチェック</p>
-            <button type="button" class="add-watch-btn-lg" id="addWatchBtnLgTab">＋ 銘柄を追加</button>
-          </div>
-        `;
-        document.getElementById('addWatchBtnLgTab')?.addEventListener('click', addWatchPrompt);
+        if (!silent) {
+          container.innerHTML = `
+            <div class="empty-watch card-premium">
+              <span class="empty-watch-icon">⭐</span>
+              <span>登録銘柄がありません</span>
+              <p class="empty-watch-hint">監視したい銘柄を追加して、毎日すぐチェック</p>
+              <button type="button" class="add-watch-btn-lg" id="addWatchBtnLgTab">＋ 銘柄を追加</button>
+            </div>
+          `;
+          document.getElementById('addWatchBtnLgTab')?.addEventListener('click', addWatchPrompt);
+        }
         return Promise.resolve();
       }
 
       if (toolbar) toolbar.style.display = 'flex';
-      renderWatchlist();
+      if (!silent) renderWatchlist();
+      if (silent) return refreshWatchlistPrices(true);
       return loadWatchlistStaggered(saved);
+    }
+
+    async function refreshWatchlistPrices(silent) {
+      const saved = JSON.parse(localStorage.getItem('watchlist') || '[]');
+      await Promise.allSettled(saved.map((sym) => loadWatchItem(sym, true)));
+      renderWatchlist();
     }
 
     async function loadWatchlistStaggered(symbols) {
@@ -906,13 +969,13 @@
       });
     }
 
-    async function loadWatchItem(sym) {
+    async function loadWatchItem(sym, batch) {
       try {
-        const res = await fetch(`/api/stock?symbol=${encodeURIComponent(sym)}`);
+        const res = await fetchSilent(`/api/stock?symbol=${encodeURIComponent(sym)}`);
         const data = await res.json();
         if (data.status !== 'ok') return;
         watchCache[sym] = data.data;
-        renderWatchlist();
+        if (!batch) renderWatchlist();
       } catch (e) {
         console.error(e);
       }

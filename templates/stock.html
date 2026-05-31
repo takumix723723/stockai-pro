@@ -26,6 +26,7 @@
           <span class="stock-header-name" id="headerName">読み込み中...</span>
         </div>
       </div>
+      <span class="live-sync stock-live-sync" id="stockLiveSync" aria-live="polite"></span>
     </div>
   </header>
 
@@ -145,7 +146,10 @@
     let currentPeriod = '1mo';
     const chartLayers = { ma5: false, ma25: true, ma75: false, bb: false };
     const subpanelLoaded = { supply: false, orderbook: false };
+    let activeStockSubtab = 'technical';
+    let lastStockPrice = null;
     const PERIOD_LABELS = { '1d': '1日', '1w': '1週', '1mo': '1月', '3mo': '3月', '1y': '1年' };
+    const STOCK_REFRESH_MS = 12000;
 
     function chartHeight() {
       const vh = window.innerHeight;
@@ -188,9 +192,36 @@
       loadSector();
       loadNews();
       window.addEventListener('resize', resizeChart);
+      initStockAutoRefresh();
     });
 
+    function initStockAutoRefresh() {
+      if (!window.createPageAutoRefresh) return;
+      const autoRefresh = createPageAutoRefresh({
+        intervalMs: STOCK_REFRESH_MS,
+        onRefresh: () => refreshStockPage(),
+      });
+      autoRefresh.start();
+      window._stockAutoRefresh = autoRefresh;
+    }
+
+    async function refreshStockPage() {
+      if (document.hidden) return;
+      setLiveSyncStatus('stockLiveSync', '更新中…', true);
+
+      const tasks = [
+        loadStock({ silent: true }),
+        loadChart(currentPeriod, { silent: true }),
+      ];
+      if (subpanelLoaded.supply) tasks.push(loadSupply({ silent: true }));
+      if (subpanelLoaded.orderbook) tasks.push(loadOrderbook({ silent: true }));
+
+      await Promise.allSettled(tasks);
+      setLiveSyncStatus('stockLiveSync', formatLiveTime());
+    }
+
     function switchStockSubtab(name) {
+      activeStockSubtab = name;
       document.querySelectorAll('.stock-subtab').forEach((b) => {
         b.classList.toggle('active', b.dataset.subtab === name);
       });
@@ -213,54 +244,88 @@
       return Number(n).toLocaleString('ja-JP', { maximumFractionDigits: digits });
     }
 
-    function renderPts(d) {
+    function renderPts(d, opts = {}) {
       const body = document.getElementById('ptsBody');
       const price = d.pts_price;
       const pct = d.pts_change_pct;
 
       if (price == null) {
-        body.innerHTML = '<span class="pts-na">PTS価格: N/A</span><span class="pts-na">PTS前日比: N/A</span>';
+        if (!opts.silent || !body.querySelector('.pts-price')) {
+          body.innerHTML = '<span class="pts-na">PTS価格: N/A</span><span class="pts-na">PTS前日比: N/A</span>';
+        }
         return;
       }
 
       const up = pct != null ? pct >= 0 : true;
       const cls = pct != null ? (up ? 'up' : 'down') : 'neutral';
+      const pctStr = pct != null ? `${up ? '+' : ''}${pct.toFixed(2)}%` : 'N/A';
+
+      if (opts.silent && body.querySelector('.pts-price')) {
+        body.querySelector('.pts-price').textContent = fmtPrice(price);
+        const chgEl = body.querySelector('.pts-chg');
+        if (chgEl) {
+          chgEl.className = `pts-chg ${cls}`;
+          chgEl.innerHTML = `PTS前日比: ${pctStr}`;
+        }
+        return;
+      }
+
       body.innerHTML = `
         <div class="pts-price">${fmtPrice(price)}</div>
         <div class="pts-chg ${cls}">
           PTS前日比:
-          ${pct != null ? `${up ? '+' : ''}${pct.toFixed(2)}%` : 'N/A'}
+          ${pctStr}
         </div>
       `;
     }
 
-    function renderTechnical(t) {
+    function renderTechnical(t, opts = {}) {
       const panel = document.getElementById('techPanel');
       if (!t || (t.rsi == null && t.macd == null)) {
-        panel.innerHTML = '<div class="news-empty">テクニカルデータがありません</div>';
+        if (!opts.silent) {
+          panel.innerHTML = '<div class="news-empty">テクニカルデータがありません</div>';
+        }
         return;
       }
+
+      if (opts.silent && panel.querySelector('.tech-grid')) {
+        const set = (key, val) => {
+          const el = panel.querySelector(`[data-tech="${key}"]`);
+          if (el) el.textContent = val ?? '—';
+        };
+        set('rsi', t.rsi);
+        set('rsi_judge', t.rsi_judge);
+        set('macd', t.macd);
+        set('macd_judge', t.macd_judge);
+        set('macd_signal', t.macd_signal);
+        set('bb_upper', t.bb_upper);
+        set('bb_mid', t.bb_mid);
+        set('bb_lower', t.bb_lower);
+        set('bb_judge', t.bb_judge);
+        return;
+      }
+
       panel.innerHTML = `
         <div class="tech-grid">
           <div class="tech-item">
             <div class="tech-label">RSI(14)</div>
-            <div class="tech-val">${t.rsi ?? '—'}</div>
-            <div class="tech-judge">${escapeHtml(t.rsi_judge)}</div>
+            <div class="tech-val" data-tech="rsi">${t.rsi ?? '—'}</div>
+            <div class="tech-judge" data-tech="rsi_judge">${escapeHtml(t.rsi_judge)}</div>
           </div>
           <div class="tech-item">
             <div class="tech-label">MACD</div>
-            <div class="tech-val">${t.macd ?? '—'}</div>
-            <div class="tech-judge">${escapeHtml(t.macd_judge)}</div>
+            <div class="tech-val" data-tech="macd">${t.macd ?? '—'}</div>
+            <div class="tech-judge" data-tech="macd_judge">${escapeHtml(t.macd_judge)}</div>
           </div>
           <div class="tech-item">
             <div class="tech-label">MACDシグナル</div>
-            <div class="tech-val">${t.macd_signal ?? '—'}</div>
+            <div class="tech-val" data-tech="macd_signal">${t.macd_signal ?? '—'}</div>
             <div class="tech-judge">—</div>
           </div>
           <div class="tech-item tech-item-wide">
             <div class="tech-label">ボリンジャーバンド(20)</div>
-            <div class="tech-val bb-row">上 ${t.bb_upper ?? '—'} / 中 ${t.bb_mid ?? '—'} / 下 ${t.bb_lower ?? '—'}</div>
-            <div class="tech-judge">${escapeHtml(t.bb_judge)}</div>
+            <div class="tech-val bb-row">上 <span data-tech="bb_upper">${t.bb_upper ?? '—'}</span> / 中 <span data-tech="bb_mid">${t.bb_mid ?? '—'}</span> / 下 <span data-tech="bb_lower">${t.bb_lower ?? '—'}</span></div>
+            <div class="tech-judge" data-tech="bb_judge">${escapeHtml(t.bb_judge)}</div>
           </div>
         </div>
       `;
@@ -318,29 +383,42 @@
       }
     }
 
-    async function loadStock() {
+    function applyStockData(d, opts = {}) {
+      const silent = !!opts.silent;
+      document.title = `${d.symbol} ${d.name} - StockAI Pro`;
+      document.getElementById('headerSymbol').textContent = d.symbol;
+      document.getElementById('headerName').textContent = d.name || '';
+      renderPts(d, opts);
+
+      const up = (d.change_pct ?? 0) >= 0;
+      const chgClass = up ? 'up' : 'down';
+      const arrow = up ? '▲' : '▼';
       const card = document.getElementById('priceCard');
-      try {
-        const res = await fetchWithProgress(`/api/stock?symbol=${encodeURIComponent(SYMBOL)}`);
-        const json = await res.json();
-        if (json.status !== 'ok' || !json.data) {
-          card.innerHTML = `<div class="stock-error">${escapeHtml(json.message || '株価データを取得できませんでした')}</div>`;
-          return;
+      const priceStr = fmtPrice(d.current);
+
+      if (silent && card.querySelector('.stock-current')) {
+        const priceEl = card.querySelector('.stock-current');
+        if (priceEl.textContent !== priceStr) {
+          priceEl.textContent = priceStr;
+          if (d.current != null && lastStockPrice != null && d.current !== lastStockPrice) {
+            flashPriceElement(priceEl, d.current > lastStockPrice ? 'up' : 'down');
+          }
         }
-
-        const d = json.data;
-        document.title = `${d.symbol} ${d.name} - StockAI Pro`;
-        document.getElementById('headerSymbol').textContent = d.symbol;
-        document.getElementById('headerName').textContent = d.name || '';
-        renderPts(d);
-
-        const up = (d.change_pct ?? 0) >= 0;
-        const chgClass = up ? 'up' : 'down';
-        const arrow = up ? '▲' : '▼';
-
+        lastStockPrice = d.current;
+        const chgEl = card.querySelector('.stock-change');
+        if (chgEl) {
+          chgEl.className = `stock-change ${chgClass}`;
+          chgEl.innerHTML = `<span>${arrow} ${fmtNum(Math.abs(d.change ?? 0))}</span><span class="stock-change-pct">(${d.change_pct != null ? (up ? '+' : '') + d.change_pct.toFixed(2) : '—'}%)</span>`;
+        }
+        const sub = card.querySelector('.stock-price-sub');
+        if (sub) {
+          sub.innerHTML = `<span>始値 ${fmtPrice(d.open)}</span><span>高値 ${fmtPrice(d.high)}</span><span>安値 ${fmtPrice(d.low)}</span>`;
+        }
+      } else {
+        lastStockPrice = d.current;
         card.innerHTML = `
           <div class="stock-price-main">
-            <div class="stock-current">${fmtPrice(d.current)}</div>
+            <div class="stock-current">${priceStr}</div>
             <div class="stock-change ${chgClass}">
               <span>${arrow} ${fmtNum(Math.abs(d.change ?? 0))}</span>
               <span class="stock-change-pct">(${d.change_pct != null ? (up ? '+' : '') + d.change_pct.toFixed(2) : '—'}%)</span>
@@ -352,20 +430,60 @@
             <span>安値 ${fmtPrice(d.low)}</span>
           </div>
         `;
+      }
 
-        const stats = document.getElementById('stockStats');
-        stats.style.display = 'grid';
+      const stats = document.getElementById('stockStats');
+      stats.style.display = 'grid';
+      const statMap = {
+        market_cap: d.market_cap_fmt || '—',
+        per: fmtNum(d.per),
+        pbr: fmtNum(d.pbr),
+        dividend: d.dividend_yield != null ? d.dividend_yield.toFixed(2) + '%' : '—',
+        volume: d.volume != null ? fmtNum(d.volume, 0) : '—',
+        range52: `${fmtPrice(d['52w_low'])} – ${fmtPrice(d['52w_high'])}`,
+      };
+
+      if (silent && stats.querySelector('[data-stat]')) {
+        Object.entries(statMap).forEach(([key, val]) => {
+          const el = stats.querySelector(`[data-stat="${key}"]`);
+          if (el) el.textContent = val;
+        });
+      } else {
         stats.innerHTML = `
-          <div class="stat-item card-premium"><span class="stat-label">時価総額</span><span class="stat-val">${escapeHtml(d.market_cap_fmt || '—')}</span></div>
-          <div class="stat-item card-premium"><span class="stat-label">PER</span><span class="stat-val">${fmtNum(d.per)}</span></div>
-          <div class="stat-item card-premium"><span class="stat-label">PBR</span><span class="stat-val">${fmtNum(d.pbr)}</span></div>
-          <div class="stat-item card-premium"><span class="stat-label">配当利回り</span><span class="stat-val">${d.dividend_yield != null ? d.dividend_yield.toFixed(2) + '%' : '—'}</span></div>
-          <div class="stat-item card-premium"><span class="stat-label">出来高</span><span class="stat-val">${d.volume != null ? fmtNum(d.volume, 0) : '—'}</span></div>
-          <div class="stat-item card-premium"><span class="stat-label">52週</span><span class="stat-val">${fmtPrice(d['52w_low'])} – ${fmtPrice(d['52w_high'])}</span></div>
+          <div class="stat-item card-premium"><span class="stat-label">時価総額</span><span class="stat-val" data-stat="market_cap">${escapeHtml(String(statMap.market_cap))}</span></div>
+          <div class="stat-item card-premium"><span class="stat-label">PER</span><span class="stat-val" data-stat="per">${statMap.per}</span></div>
+          <div class="stat-item card-premium"><span class="stat-label">PBR</span><span class="stat-val" data-stat="pbr">${statMap.pbr}</span></div>
+          <div class="stat-item card-premium"><span class="stat-label">配当利回り</span><span class="stat-val" data-stat="dividend">${statMap.dividend}</span></div>
+          <div class="stat-item card-premium"><span class="stat-label">出来高</span><span class="stat-val" data-stat="volume">${statMap.volume}</span></div>
+          <div class="stat-item card-premium"><span class="stat-label">52週</span><span class="stat-val" data-stat="range52">${statMap.range52}</span></div>
         `;
+      }
+
+      if (!silent) {
+        setLiveSyncStatus('stockLiveSync', formatLiveTime());
+      }
+    }
+
+    async function loadStock(opts = {}) {
+      const silent = !!opts.silent;
+      const card = document.getElementById('priceCard');
+      try {
+        const res = silent
+          ? await fetchSilent(`/api/stock?symbol=${encodeURIComponent(SYMBOL)}`)
+          : await fetchWithProgress(`/api/stock?symbol=${encodeURIComponent(SYMBOL)}`);
+        const json = await res.json();
+        if (json.status !== 'ok' || !json.data) {
+          if (!silent) {
+            card.innerHTML = `<div class="stock-error">${escapeHtml(json.message || '株価データを取得できませんでした')}</div>`;
+          }
+          return;
+        }
+        applyStockData(json.data, opts);
       } catch (e) {
         console.error(e);
-        card.innerHTML = '<div class="stock-error">通信エラー <button type="button" class="retry-btn" onclick="loadStock()">再試行</button></div>';
+        if (!silent) {
+          card.innerHTML = '<div class="stock-error">通信エラー <button type="button" class="retry-btn" onclick="loadStock()">再試行</button></div>';
+        }
       }
     }
 
@@ -414,82 +532,97 @@
       }
     }
 
-    async function loadSupply() {
+    function renderSupplyPanel(c, panel) {
+      panel.innerHTML = `
+        <div class="supply-meta">${escapeHtml(c.updated || '')}</div>
+        <div class="supply-grid">
+          <div class="supply-stat"><span class="supply-k">信用買残</span><span class="supply-v">${escapeHtml(c.margin_buy)}</span><span class="supply-sub">前週比 ${escapeHtml(c.buy_week_change)}</span></div>
+          <div class="supply-stat"><span class="supply-k">信用売残</span><span class="supply-v">${escapeHtml(c.margin_sell)}</span><span class="supply-sub">前週比 ${escapeHtml(c.sell_week_change)}</span></div>
+          <div class="supply-stat"><span class="supply-k">信用倍率</span><span class="supply-v highlight">${escapeHtml(c.margin_ratio_fmt)}</span></div>
+          <div class="supply-stat"><span class="supply-k">空売り比率</span><span class="supply-v">${escapeHtml(c.short_ratio)}</span></div>
+          <div class="supply-stat"><span class="supply-k">出来高倍率</span><span class="supply-v">${escapeHtml(c.vol_ratio)}</span></div>
+          <div class="supply-stat"><span class="supply-k">需給シグナル</span><span class="supply-v">${escapeHtml(c.signal)}</span></div>
+        </div>
+        <div class="supply-short-title">空売り残高（参考）</div>
+        ${(c.short_sellers || []).map((s) => `
+          <div class="supply-short-row">
+            <span>${escapeHtml(s.name)}</span>
+            <span class="supply-short-ratio">${escapeHtml(s.ratio)}</span>
+            <span class="supply-short-trend">${escapeHtml(s.trend)}</span>
+          </div>
+        `).join('')}
+      `;
+    }
+
+    async function loadSupply(opts = {}) {
+      const silent = !!opts.silent;
       const panel = document.getElementById('supplyPanel');
-      panel.innerHTML = '<div class="skeleton-block"></div>';
+      if (!silent) panel.innerHTML = '<div class="skeleton-block"></div>';
       try {
-        const res = await fetchWithProgress(`/api/supply?symbol=${encodeURIComponent(SYMBOL)}`);
+        const res = silent
+          ? await fetchSilent(`/api/supply?symbol=${encodeURIComponent(SYMBOL)}`)
+          : await fetchWithProgress(`/api/supply?symbol=${encodeURIComponent(SYMBOL)}`);
         const json = await res.json();
         if (json.status !== 'ok' || !json.credit) throw new Error('failed');
-        const c = json.credit;
         subpanelLoaded.supply = true;
-        panel.innerHTML = `
-          <div class="supply-meta">${escapeHtml(c.updated || '')}</div>
-          <div class="supply-grid">
-            <div class="supply-stat"><span class="supply-k">信用買残</span><span class="supply-v">${escapeHtml(c.margin_buy)}</span><span class="supply-sub">前週比 ${escapeHtml(c.buy_week_change)}</span></div>
-            <div class="supply-stat"><span class="supply-k">信用売残</span><span class="supply-v">${escapeHtml(c.margin_sell)}</span><span class="supply-sub">前週比 ${escapeHtml(c.sell_week_change)}</span></div>
-            <div class="supply-stat"><span class="supply-k">信用倍率</span><span class="supply-v highlight">${escapeHtml(c.margin_ratio_fmt)}</span></div>
-            <div class="supply-stat"><span class="supply-k">空売り比率</span><span class="supply-v">${escapeHtml(c.short_ratio)}</span></div>
-            <div class="supply-stat"><span class="supply-k">出来高倍率</span><span class="supply-v">${escapeHtml(c.vol_ratio)}</span></div>
-            <div class="supply-stat"><span class="supply-k">需給シグナル</span><span class="supply-v">${escapeHtml(c.signal)}</span></div>
-          </div>
-          <div class="supply-short-title">空売り残高（参考）</div>
-          ${(c.short_sellers || []).map((s) => `
-            <div class="supply-short-row">
-              <span>${escapeHtml(s.name)}</span>
-              <span class="supply-short-ratio">${escapeHtml(s.ratio)}</span>
-              <span class="supply-short-trend">${escapeHtml(s.trend)}</span>
-            </div>
-          `).join('')}
-        `;
+        renderSupplyPanel(json.credit, panel);
       } catch (e) {
-        panel.innerHTML = '<div class="load-fail">読み込み失敗 <button type="button" class="retry-btn" onclick="loadSupply()">再試行</button></div>';
+        if (!silent) {
+          panel.innerHTML = '<div class="load-fail">読み込み失敗 <button type="button" class="retry-btn" onclick="loadSupply()">再試行</button></div>';
+        }
       }
     }
     window.loadSupply = loadSupply;
 
-    async function loadOrderbook() {
+    function renderOrderbookPanel(b, panel) {
+      const sells = (b.levels || []).filter((l) => l.side === 'sell').sort((a, c) => c.price - a.price);
+      const buys = (b.levels || []).filter((l) => l.side === 'buy').sort((a, c) => c.price - a.price);
+      panel.innerHTML = `
+        <div class="ob-source">${escapeHtml(b.source || '')}</div>
+        <div class="ob-best-row">
+          <div class="ob-best-item"><span class="ob-k">Best Bid</span><span class="ob-v bid">${fmtPrice(b.bid)}</span><span class="ob-q">${b.bid_size != null ? fmtNum(b.bid_size, 0) + '株' : '—'}</span></div>
+          <div class="ob-spread"><span class="ob-k">Spread</span><span class="ob-v">${b.spread != null ? fmtNum(b.spread) : '—'}</span><span class="ob-sub">${b.spread_pct != null ? b.spread_pct + '%' : ''}</span></div>
+          <div class="ob-best-item"><span class="ob-k">Best Ask</span><span class="ob-v ask">${fmtPrice(b.ask)}</span><span class="ob-q">${b.ask_size != null ? fmtNum(b.ask_size, 0) + '株' : '—'}</span></div>
+        </div>
+        <div class="ob-board-head"><span>売数量</span><span>値段</span><span>買数量</span></div>
+        <div class="ob-board">
+          ${sells.map((l) => `
+            <div class="ob-row ob-row-sell">
+              <span class="ob-qty sell">${fmtNum(l.qty, 0)}</span>
+              <span class="ob-price">${fmtPrice(l.price)}</span>
+              <span class="ob-qty"></span>
+            </div>
+          `).join('')}
+          <div class="ob-row ob-row-mid">
+            <span></span><span class="ob-mid-label">気配</span><span></span>
+          </div>
+          ${buys.map((l) => `
+            <div class="ob-row ob-row-buy">
+              <span class="ob-qty"></span>
+              <span class="ob-price">${fmtPrice(l.price)}</span>
+              <span class="ob-qty buy">${fmtNum(l.qty, 0)}</span>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    async function loadOrderbook(opts = {}) {
+      const silent = !!opts.silent;
       const panel = document.getElementById('orderbookPanel');
-      panel.innerHTML = '<div class="skeleton-block"></div>';
+      if (!silent) panel.innerHTML = '<div class="skeleton-block"></div>';
       try {
-        const res = await fetchWithProgress(`/api/orderbook?symbol=${encodeURIComponent(SYMBOL)}`);
+        const res = silent
+          ? await fetchSilent(`/api/orderbook?symbol=${encodeURIComponent(SYMBOL)}`)
+          : await fetchWithProgress(`/api/orderbook?symbol=${encodeURIComponent(SYMBOL)}`);
         const json = await res.json();
         if (json.status !== 'ok' || !json.orderbook) throw new Error('failed');
-        const b = json.orderbook;
         subpanelLoaded.orderbook = true;
-        const sells = (b.levels || []).filter((l) => l.side === 'sell').sort((a, c) => c.price - a.price);
-        const buys = (b.levels || []).filter((l) => l.side === 'buy').sort((a, c) => c.price - a.price);
-
-        panel.innerHTML = `
-          <div class="ob-source">${escapeHtml(b.source || '')}</div>
-          <div class="ob-best-row">
-            <div class="ob-best-item"><span class="ob-k">Best Bid</span><span class="ob-v bid">${fmtPrice(b.bid)}</span><span class="ob-q">${b.bid_size != null ? fmtNum(b.bid_size, 0) + '株' : '—'}</span></div>
-            <div class="ob-spread"><span class="ob-k">Spread</span><span class="ob-v">${b.spread != null ? fmtNum(b.spread) : '—'}</span><span class="ob-sub">${b.spread_pct != null ? b.spread_pct + '%' : ''}</span></div>
-            <div class="ob-best-item"><span class="ob-k">Best Ask</span><span class="ob-v ask">${fmtPrice(b.ask)}</span><span class="ob-q">${b.ask_size != null ? fmtNum(b.ask_size, 0) + '株' : '—'}</span></div>
-          </div>
-          <div class="ob-board-head"><span>売数量</span><span>値段</span><span>買数量</span></div>
-          <div class="ob-board">
-            ${sells.map((l) => `
-              <div class="ob-row ob-row-sell">
-                <span class="ob-qty sell">${fmtNum(l.qty, 0)}</span>
-                <span class="ob-price">${fmtPrice(l.price)}</span>
-                <span class="ob-qty"></span>
-              </div>
-            `).join('')}
-            <div class="ob-row ob-row-mid">
-              <span></span><span class="ob-mid-label">気配</span><span></span>
-            </div>
-            ${buys.map((l) => `
-              <div class="ob-row ob-row-buy">
-                <span class="ob-qty"></span>
-                <span class="ob-price">${fmtPrice(l.price)}</span>
-                <span class="ob-qty buy">${fmtNum(l.qty, 0)}</span>
-              </div>
-            `).join('')}
-          </div>
-        `;
+        renderOrderbookPanel(json.orderbook, panel);
       } catch (e) {
-        panel.innerHTML = '<div class="load-fail">読み込み失敗 <button type="button" class="retry-btn" onclick="loadOrderbook()">再試行</button></div>';
+        if (!silent) {
+          panel.innerHTML = '<div class="load-fail">読み込み失敗 <button type="button" class="retry-btn" onclick="loadOrderbook()">再試行</button></div>';
+        }
       }
     }
     window.loadOrderbook = loadOrderbook;
@@ -617,22 +750,37 @@
       }
     }
 
-    async function loadChart(period) {
+    async function loadChart(period, opts = {}) {
+      const silent = !!opts.silent;
       const loading = document.getElementById('chartLoading');
       const errEl = document.getElementById('chartError');
       document.getElementById('techPeriodBadge').textContent = PERIOD_LABELS[period] || period;
-      loading.style.display = 'block';
-      errEl.style.display = 'none';
+      if (!silent) {
+        loading.style.display = 'block';
+        errEl.style.display = 'none';
+      }
 
       try {
-        const res = await fetchWithProgress(`/api/chart?symbol=${encodeURIComponent(SYMBOL)}&period=${encodeURIComponent(period)}`);
+        const url = `/api/chart?symbol=${encodeURIComponent(SYMBOL)}&period=${encodeURIComponent(period)}`;
+        const res = silent ? await fetchSilent(url) : await fetchWithProgress(url);
         const json = await res.json();
 
         if (json.status !== 'ok' || !json.candles || json.candles.length === 0) {
+          if (!silent) {
+            loading.style.display = 'none';
+            errEl.style.display = 'block';
+            errEl.innerHTML = `<span>${escapeHtml(json.message || 'チャートデータがありません')}</span>`;
+            destroyChart();
+          }
+          return;
+        }
+
+        if (silent && chartInstance && candleSeries && period === currentPeriod) {
           loading.style.display = 'none';
-          errEl.style.display = 'block';
-          errEl.innerHTML = `<span>${escapeHtml(json.message || 'チャートデータがありません')}</span>`;
-          destroyChart();
+          candleSeries.setData(mapCandles(json.candles, period));
+          lastChartJson = { ...json, period };
+          applyChartLayers();
+          renderTechnical(json.technical, { silent: true });
           return;
         }
 
@@ -669,9 +817,11 @@
         chartInstance.timeScale().fitContent();
       } catch (e) {
         console.error(e);
-        loading.style.display = 'none';
-        errEl.style.display = 'block';
-        errEl.innerHTML = '<span>チャートの読み込みに失敗しました</span>';
+        if (!silent) {
+          loading.style.display = 'none';
+          errEl.style.display = 'block';
+          errEl.innerHTML = '<span>チャートの読み込みに失敗しました</span>';
+        }
       }
     }
   </script>

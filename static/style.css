@@ -634,6 +634,62 @@ html.is-standalone .install-guide-modal {
   overflow: hidden;
 }
 
+.market-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.market-bar-row .market-ticker {
+  flex: 1;
+  min-width: 0;
+}
+
+.live-sync {
+  flex-shrink: 0;
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  font-family: var(--mono);
+  white-space: nowrap;
+  opacity: 0.85;
+  transition: opacity 0.2s, color 0.2s;
+}
+
+.live-sync.is-pulse {
+  opacity: 1;
+  color: var(--accent);
+}
+
+.stock-live-sync {
+  font-size: 0.62rem;
+  margin-left: auto;
+  padding-right: 4px;
+}
+
+.stock-page .header-inner {
+  align-items: center;
+}
+
+@keyframes priceFlashUp {
+  0% { background-color: rgba(38, 166, 154, 0.35); }
+  100% { background-color: transparent; }
+}
+
+@keyframes priceFlashDown {
+  0% { background-color: rgba(239, 83, 80, 0.35); }
+  100% { background-color: transparent; }
+}
+
+.price-flash-up {
+  animation: priceFlashUp 0.65s ease-out;
+  border-radius: 6px;
+}
+
+.price-flash-down {
+  animation: priceFlashDown 0.65s ease-out;
+  border-radius: 6px;
+}
+
 .market-ticker {
   display: flex;
   gap: 12px;

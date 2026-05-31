@@ -75,6 +75,99 @@ async function fetchWithProgress(url, options) {
   }
 }
 
+/** 自動更新用（プログレスバー非表示） */
+async function fetchSilent(url, options) {
+  return fetch(url, options);
+}
+
+function formatLiveTime(date = new Date()) {
+  const h = date.getHours();
+  const m = String(date.getMinutes()).padStart(2, '0');
+  const s = String(date.getSeconds()).padStart(2, '0');
+  return `${h}:${m}:${s} 更新`;
+}
+
+function setLiveSyncStatus(elementId, text, pulsing) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  el.textContent = text;
+  el.classList.toggle('is-pulse', !!pulsing);
+  if (pulsing) {
+    clearTimeout(el._pulseTimer);
+    el._pulseTimer = setTimeout(() => el.classList.remove('is-pulse'), 800);
+  }
+}
+
+function flashPriceElement(el, direction) {
+  if (!el || !direction) return;
+  el.classList.remove('price-flash-up', 'price-flash-down');
+  void el.offsetWidth;
+  el.classList.add(direction === 'up' ? 'price-flash-up' : 'price-flash-down');
+}
+
+/**
+ * Page Visibility 対応の自動更新タイマー
+ * 非表示時は停止、再表示時に即1回更新してタイマー再開
+ */
+function createPageAutoRefresh(options) {
+  const intervalMs = options.intervalMs || 30000;
+  const onRefresh = options.onRefresh || (() => {});
+  let timerId = null;
+  let started = false;
+
+  function isVisible() {
+    return !document.hidden;
+  }
+
+  function stop() {
+    if (timerId) {
+      clearInterval(timerId);
+      timerId = null;
+    }
+  }
+
+  function tick(immediate) {
+    if (!isVisible()) return;
+    onRefresh(!!immediate);
+  }
+
+  function start() {
+    stop();
+    if (!isVisible()) return;
+    started = true;
+    timerId = setInterval(() => tick(false), intervalMs);
+  }
+
+  function onVisibilityChange() {
+    if (document.hidden) {
+      stop();
+    } else if (started) {
+      tick(true);
+      start();
+    }
+  }
+
+  document.addEventListener('visibilitychange', onVisibilityChange);
+
+  return {
+    start() {
+      started = true;
+      start();
+    },
+    stop() {
+      started = false;
+      stop();
+    },
+    destroy() {
+      this.stop();
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    },
+    refreshNow() {
+      tick(true);
+    },
+  };
+}
+
 function getAlertSettings() {
   return {
     enabled: localStorage.getItem('alertEnabled') === 'true',
@@ -97,6 +190,7 @@ function setAlertPrice(symbol, price) {
 }
 
 async function checkWatchAlerts() {
+  if (document.hidden) return;
   const { enabled, threshold } = getAlertSettings();
   if (!enabled || !('Notification' in window) || Notification.permission !== 'granted') {
     return;
