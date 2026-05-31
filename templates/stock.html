@@ -27,6 +27,9 @@
         </div>
       </div>
       <span class="live-sync stock-live-sync" id="stockLiveSync" aria-live="polite"></span>
+      <span class="stock-live-badge" id="stockLiveBadge" hidden>
+        <span class="stock-live-dot"></span>LIVE
+      </span>
     </div>
   </header>
 
@@ -193,6 +196,7 @@
       loadNews();
       window.addEventListener('resize', resizeChart);
       initStockAutoRefresh();
+      updateStockLiveBadge(true);
     });
 
     function initStockAutoRefresh() {
@@ -213,11 +217,25 @@
         loadStock({ silent: true }),
         loadChart(currentPeriod, { silent: true }),
       ];
-      if (subpanelLoaded.supply) tasks.push(loadSupply({ silent: true }));
-      if (subpanelLoaded.orderbook) tasks.push(loadOrderbook({ silent: true }));
+
+      /* 需給/信用・気配はタブ表示中または一度読込済みなら追従更新 */
+      if (activeStockSubtab === 'supply' || subpanelLoaded.supply) {
+        tasks.push(loadSupply({ silent: true }));
+      }
+      if (activeStockSubtab === 'orderbook' || subpanelLoaded.orderbook) {
+        tasks.push(loadOrderbook({ silent: true }));
+      }
 
       await Promise.allSettled(tasks);
       setLiveSyncStatus('stockLiveSync', formatLiveTime());
+      updateStockLiveBadge(true);
+    }
+
+    function updateStockLiveBadge(active) {
+      const badge = document.getElementById('stockLiveBadge');
+      if (!badge) return;
+      badge.hidden = false;
+      badge.classList.toggle('is-active', !!active);
     }
 
     function switchStockSubtab(name) {
@@ -557,6 +575,8 @@
     async function loadSupply(opts = {}) {
       const silent = !!opts.silent;
       const panel = document.getElementById('supplyPanel');
+      if (!panel) return;
+      if (silent && !subpanelLoaded.supply && activeStockSubtab !== 'supply') return;
       if (!silent) panel.innerHTML = '<div class="skeleton-block"></div>';
       try {
         const res = silent
@@ -610,6 +630,8 @@
     async function loadOrderbook(opts = {}) {
       const silent = !!opts.silent;
       const panel = document.getElementById('orderbookPanel');
+      if (!panel) return;
+      if (silent && !subpanelLoaded.orderbook && activeStockSubtab !== 'orderbook') return;
       if (!silent) panel.innerHTML = '<div class="skeleton-block"></div>';
       try {
         const res = silent
@@ -750,6 +772,25 @@
       }
     }
 
+    function applyChartDataSilent(json, period) {
+      const candles = mapCandles(json.candles, period);
+      if (!candles.length) return;
+
+      const prevLen = lastChartJson?.candles?.length || 0;
+      const newLen = candles.length;
+
+      if (newLen === prevLen || newLen === prevLen + 1) {
+        candleSeries.update(candles[newLen - 1]);
+      } else {
+        candleSeries.setData(candles);
+        try {
+          chartInstance.timeScale().scrollToRealTime();
+        } catch (_) {
+          /* ignore */
+        }
+      }
+    }
+
     async function loadChart(period, opts = {}) {
       const silent = !!opts.silent;
       const loading = document.getElementById('chartLoading');
@@ -777,7 +818,7 @@
 
         if (silent && chartInstance && candleSeries && period === currentPeriod) {
           loading.style.display = 'none';
-          candleSeries.setData(mapCandles(json.candles, period));
+          applyChartDataSilent(json, period);
           lastChartJson = { ...json, period };
           applyChartLayers();
           renderTechnical(json.technical, { silent: true });
