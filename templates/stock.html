@@ -425,7 +425,10 @@
       }
     }
 
+    let lastStockData = null;
+
     function applyStockData(d, opts = {}) {
+      lastStockData = d;
       const silent = !!opts.silent;
       document.title = `${d.symbol} ${d.name} - StockAI Pro`;
       document.getElementById('headerSymbol').textContent = d.symbol;
@@ -528,6 +531,15 @@
         return true;
       } catch (e) {
         console.error(e);
+        if (silent && lastStockData) {
+          pulseLiveSync('stockLiveSync');
+          scheduleAutoRetry(
+            'stock',
+            () => loadStock({ isRetry: true, silent: true }),
+            { silent: true }
+          );
+          return false;
+        }
         scheduleAutoRetry(
           'stock',
           () => loadStock({ isRetry: true, silent }),

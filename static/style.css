@@ -26,6 +26,11 @@
   --mono: 'JetBrains Mono', monospace;
   --page-pad: 16px;
   --content-max: 960px;
+  --list-gap: 10px;
+  --card-radius: 12px;
+  --section-gap: 14px;
+  --btn-h: 40px;
+  --page-head-gap: 12px;
 }
 
 [data-theme='light'] {
@@ -886,6 +891,34 @@ html.is-standalone .install-guide-modal {
   margin: 16px 0 12px;
 }
 
+/* 共通ページヘッダ（全タブ統一） */
+.page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--page-head-gap);
+  margin: 8px 0 var(--section-gap);
+  flex-wrap: wrap;
+}
+
+.page-head-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.page-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.page-head-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 /* ホーム中心メニュー（SBI風） */
 .home-menu-grid {
   display: grid;
@@ -1161,9 +1194,10 @@ body.sub-panel-open .main-tabs {
 
 /* ウォッチリスト */
 .add-watch-btn {
+  min-height: var(--btn-h);
   padding: 6px 12px;
   border: 1px dashed var(--accent);
-  border-radius: 8px;
+  border-radius: var(--card-radius);
   background: transparent;
   color: var(--accent);
   font-size: 0.85rem;
@@ -1257,7 +1291,7 @@ body.sub-panel-open .main-tabs {
 .fund-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--list-gap);
 }
 
 .rank-card,
@@ -1695,7 +1729,7 @@ body.sub-panel-open .main-tabs {
 
 /* 登録銘柄 — SBI風スワイプ切替 */
 .wl-swipe-root {
-  margin: 0 -14px;
+  margin: 0;
 }
 
 .wl-tab-bar {
@@ -1816,7 +1850,7 @@ body.sub-panel-open .main-tabs {
 .wl-symbol-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--list-gap);
   min-height: 120px;
 }
 
@@ -3491,7 +3525,7 @@ body.main-tab-ipo .search-section {
 }
 
 body.main-tab-ipo #mainTabArea {
-  max-width: 640px;
+  max-width: var(--content-max);
   margin: 0 auto;
 }
 
@@ -3509,7 +3543,7 @@ body.main-tab-ipo .ipo-page-embed .ipo-page-head {
 
 .ipo-main {
   padding: 8px 14px 0;
-  max-width: 640px;
+  max-width: var(--content-max);
   margin: 0 auto;
 }
 
@@ -3607,7 +3641,7 @@ body.main-tab-ipo .ipo-page-embed .ipo-page-head {
 .ipo-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--list-gap);
 }
 
 /* SBI風カード */

@@ -255,6 +255,92 @@ def enrich_fundamentals(info: dict, ticker, symbol: str, hist: pd.DataFrame | No
     if out.get("regularMarketVolume") is None and hist is not None and not hist.empty:
         out["regularMarketVolume"] = safe_val(hist["Volume"].iloc[-1])
 
+    out = _enrich_from_statements(out, ticker, price)
+    out = _enrich_dividend_from_history(out, ticker, price)
+
+    return out
+
+
+def _get_shares_outstanding(out: dict, ticker) -> float | None:
+    shares = safe_val(
+        out.get("sharesOutstanding") or out.get("impliedSharesOutstanding")
+    )
+    if shares:
+        return shares
+    fi = _fast_info_dict(ticker)
+    return safe_val(fi.get("shares"))
+
+
+def _enrich_from_statements(out: dict, ticker, price: float | None) -> dict:
+    """財務諸表から EPS・PBR・時価総額を補完"""
+    if price is None:
+        return out
+    try:
+        shares = _get_shares_outstanding(out, ticker)
+
+        if safe_val(out.get("trailingPE") or out.get("forwardPE")) is None:
+            eps = safe_val(
+                out.get("trailingEps")
+                or out.get("epsTrailingTwelveMonths")
+                or out.get("forwardEps")
+            )
+            if eps is None:
+                inc = ticker.income_stmt
+                if inc is not None and not inc.empty:
+                    for key in (
+                        "Net Income",
+                        "Net Income Common Stockholders",
+                        "Normalized Income",
+                    ):
+                        if key in inc.index:
+                            net = safe_val(inc.loc[key].iloc[0])
+                            if net and shares and shares > 0:
+                                eps = net / shares
+                                out["trailingEps"] = eps
+                                break
+            if eps and eps > 0:
+                out["trailingPE"] = round(price / eps, 2)
+
+        if safe_val(out.get("priceToBook")) is None:
+            bv = safe_val(out.get("bookValue"))
+            if bv is None and shares and shares > 0:
+                bs = ticker.balance_sheet
+                if bs is not None and not bs.empty:
+                    for key in (
+                        "Stockholders Equity",
+                        "Total Stockholder Equity",
+                        "Common Stock Equity",
+                        "Total Equity Gross Minority Interest",
+                    ):
+                        if key in bs.index:
+                            eq = safe_val(bs.loc[key].iloc[0])
+                            if eq and eq > 0:
+                                bv = eq / shares
+                                out["bookValue"] = round(bv, 2)
+                                break
+            if bv and bv > 0:
+                out["priceToBook"] = round(price / bv, 2)
+
+        if safe_val(out.get("marketCap")) is None and shares:
+            out["marketCap"] = price * shares
+    except Exception:
+        traceback.print_exc()
+    return out
+
+
+def _enrich_dividend_from_history(out: dict, ticker, price: float | None) -> dict:
+    """配当履歴から利回りを補完"""
+    if safe_val(out.get("dividendYield")) is not None or not price:
+        return out
+    try:
+        divs = ticker.dividends
+        if divs is not None and len(divs) > 0:
+            cutoff = divs.index.max() - pd.Timedelta(days=365)
+            annual = safe_val(divs[divs.index > cutoff].sum())
+            if annual and annual > 0:
+                out["dividendYield"] = annual / price
+    except Exception:
+        traceback.print_exc()
     return out
 
 
@@ -1418,7 +1504,7 @@ def api_stock():
             "volume": volume,
             "market_cap": market_cap,
             "market_cap_fmt": fmt_large(market_cap),
-            "per": safe_val(info.get("trailingPE")),
+            "per": safe_val(info.get("trailingPE") or info.get("forwardPE")),
             "pbr": safe_val(info.get("priceToBook")),
             "roe": safe_val(info.get("returnOnEquity")),
             "dividend_yield": fmt_dividend_pct(info),
@@ -1562,8 +1648,8 @@ def api_analysis():
     symbol = request.args.get("symbol", "7203")
     try:
         ticker = get_ticker(symbol)
-        info = get_ticker_info(ticker)
         hist = get_history_safe(ticker, period="1y", interval="1d")
+        info = enrich_fundamentals(get_ticker_info(ticker), ticker, symbol, hist=hist)
 
         ai_score = calc_ai_score(info, hist, symbol)
         tob_score = calc_tob_score(info)
@@ -1600,7 +1686,7 @@ def api_analysis():
             }
 
         funda = {
-            "per": safe_val(info.get("trailingPE")),
+            "per": safe_val(info.get("trailingPE") or info.get("forwardPE")),
             "pbr": safe_val(info.get("priceToBook")),
             "roe": safe_val(info.get("returnOnEquity")),
             "roa": safe_val(info.get("returnOnAssets")),

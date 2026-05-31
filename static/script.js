@@ -161,6 +161,8 @@ function flashPriceElement(el, direction) {
 /** ページ種別ごとの更新間隔（ms） */
 const REFRESH_MS = {
   INDEX: 45000,
+  HOME_MARKET: 30000,
+  RANKING: 30000,
   STOCK_SLOW: 12000,
   STOCK_FAST: 4000,
   WATCHLIST: 15000,

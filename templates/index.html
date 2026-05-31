@@ -344,18 +344,44 @@
     function initIndexAutoRefresh() {
       if (!window.createPageAutoRefresh) return;
       const indexMs = (window.REFRESH_MS && window.REFRESH_MS.INDEX) || 45000;
+      const homeFastMs = (window.REFRESH_MS && window.REFRESH_MS.HOME_MARKET) || 30000;
       const watchMs = (window.REFRESH_MS && window.REFRESH_MS.WATCHLIST) || 15000;
+      const rankingMs = (window.REFRESH_MS && window.REFRESH_MS.RANKING) || 30000;
 
       window._indexAutoRefresh = createPageAutoRefresh({
         intervalMs: indexMs,
         onRefresh: () => refreshIndexPage(),
       });
+      window._homeFastRefresh = createPageAutoRefresh({
+        intervalMs: homeFastMs,
+        onRefresh: () => refreshHomeFast(),
+      });
       window._watchlistAutoRefresh = createPageAutoRefresh({
         intervalMs: watchMs,
         onRefresh: () => refreshWatchlistFast(),
       });
+      window._rankingAutoRefresh = createPageAutoRefresh({
+        intervalMs: rankingMs,
+        onRefresh: () => refreshRankingFast(),
+      });
       window._indexAutoRefresh.start();
+      window._homeFastRefresh.start();
       window._watchlistAutoRefresh.start();
+      window._rankingAutoRefresh.start();
+    }
+
+    async function refreshHomeFast() {
+      if (document.hidden || currentMainTab !== 'home') return;
+      if (!homeMarketBarMounted) return;
+      pulseLiveSync('liveSyncStatus');
+      await loadMarketIndices({ silent: true });
+      setLiveSyncStatus('liveSyncStatus', formatLiveTime());
+    }
+
+    async function refreshRankingFast() {
+      if (document.hidden || currentMainTab !== 'ranking') return;
+      if (!tabLoaded.ranking) return;
+      await loadRanking({ silent: true });
     }
 
     async function refreshWatchlistFast() {
@@ -376,18 +402,12 @@
 
       const tasks = [];
 
-      if (currentMainTab === 'home' && homeMarketBarMounted) {
-        tasks.push(loadMarketIndices({ silent: true }));
-      }
-
       if (currentMainTab === 'home' && tabLoaded.home) {
         tasks.push(loadHomeContent({ silent: true }));
-      } else if (currentMainTab === 'ranking' && tabLoaded.ranking) {
-        tasks.push(loadRanking({ silent: true }));
       } else if (currentMainTab === 'ipo' && tabLoaded.ipo) {
         tasks.push(loadIpoContent({ silent: true }));
       }
-      /* watchlist は refreshWatchlistFast（15秒）で別途更新 */
+      /* 指数・急騰急落は refreshHomeFast / refreshRankingFast で別途更新 */
 
       tasks.push(loadNotifications({ silent: true }));
 
@@ -437,9 +457,11 @@
       tab.className = 'tab-content';
       tab.id = 'tab-watchlist';
       tab.innerHTML =
-        '<div class="watch-page-header section-header">' +
-        '<div class="section-title">📋 登録銘柄</div>' +
-        '<div class="wf-header-actions">' +
+        '<div class="page-head">' +
+        '<div class="page-head-main">' +
+        '<h2 class="page-title">📋 登録銘柄</h2>' +
+        '</div>' +
+        '<div class="page-head-actions wf-header-actions">' +
         '<button type="button" class="add-watch-btn" id="addFolderBtn">＋ カテゴリ</button>' +
         '<button type="button" class="add-watch-btn" id="addWatchBtnTab">＋ 銘柄</button>' +
         '</div></div>' +
@@ -475,6 +497,9 @@
       tab.className = 'tab-content';
       tab.id = 'tab-ranking';
       tab.innerHTML =
+        '<div class="page-head">' +
+        '<div class="page-head-main"><h2 class="page-title">📈 急騰・急落</h2></div>' +
+        '</div>' +
         '<div class="section-title">📈 本日の急騰銘柄</div>' +
         '<div class="ranking-list" id="gainersList"></div>' +
         '<div class="section-title mt-16">📉 本日の急落銘柄</div>' +
@@ -497,7 +522,7 @@
       tab.id = 'tab-ipo';
       tab.innerHTML =
         '<main class="ipo-main">' +
-        '<div class="ipo-page-head">' +
+        '<div class="ipo-page-head page-head">' +
         '<div class="ipo-page-head-left">' +
         '<h1 class="ipo-page-title" id="ipoPageTitle">IPO・PO</h1>' +
         '<p class="ipo-page-meta" id="ipoPageMeta">読み込み中…</p>' +

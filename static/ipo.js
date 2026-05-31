@@ -256,7 +256,7 @@ const IpoPage = {
   ipoCardHtml(item) {
     const href = `/ipo/${encodeURIComponent(item.id)}`;
     return `
-      <article class="ipo-sbi-card">
+      <article class="ipo-sbi-card card-premium">
         <div class="ipo-sbi-card-head">
           <div class="ipo-sbi-badges">
             <span class="ipo-sbi-badge">IPO</span>
@@ -283,7 +283,7 @@ const IpoPage = {
 
   poCardHtml(item) {
     return `
-      <article class="ipo-sbi-card po-sbi-card">
+      <article class="ipo-sbi-card po-sbi-card card-premium">
         <div class="ipo-sbi-card-head">
           <div class="ipo-sbi-badges">
             <span class="ipo-sbi-badge po-sbi-badge">PO</span>

@@ -288,7 +288,7 @@
       const d = WatchlistUI.watchCache[sym];
       if (!d) {
         return `
-          <div class="watch-item wf-symbol-row is-loading" data-symbol="${WatchlistUI.esc(sym)}" data-folder-id="${WatchlistUI.esc(folderId)}" draggable="true">
+          <div class="watch-item wf-symbol-row card-premium is-loading" data-symbol="${WatchlistUI.esc(sym)}" data-folder-id="${WatchlistUI.esc(folderId)}" draggable="true">
             <span class="wf-sym-drag" data-drag="symbol">☰</span>
             <div class="watch-left">
               <div class="watch-symbol">${WatchlistUI.esc(sym)}</div>
@@ -305,7 +305,7 @@
       const chg = d.change != null ? `${up ? '+' : ''}${Number(d.change).toFixed(0)}` : '—';
       const pct = d.change_pct != null ? `${up ? '+' : ''}${d.change_pct.toFixed(2)}%` : '—';
       return `
-        <div class="watch-item wf-symbol-row" data-symbol="${WatchlistUI.esc(sym)}" data-folder-id="${WatchlistUI.esc(folderId)}" draggable="true">
+        <div class="watch-item wf-symbol-row card-premium" data-symbol="${WatchlistUI.esc(sym)}" data-folder-id="${WatchlistUI.esc(folderId)}" draggable="true">
           <span class="wf-sym-drag" data-drag="symbol">☰</span>
           <div class="watch-left">
             <div class="watch-symbol">${WatchlistUI.esc(sym)}</div>
