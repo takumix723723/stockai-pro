@@ -11,6 +11,7 @@ import sys
 import json
 from datetime import datetime, timedelta
 import traceback
+import re
 
 
 def get_base_path():
@@ -623,7 +624,7 @@ def fetch_stock_news(symbol: str, info: dict) -> list:
     if items:
         return items
 
-    name = info.get("shortName") or info.get("longName") or symbol
+    name = resolve_japanese_name(symbol, info)
     base = datetime.now()
     return [
         {
@@ -716,31 +717,86 @@ STOCK_NAMES = {
     "8035": "東京エレクトロン",
     "9984": "ソフトバンクG",
     "6758": "ソニーグループ",
-    "4063": "信越化学",
+    "4063": "信越化学工業",
     "6857": "アドバンテスト",
     "6146": "ディスコ",
-    "8306": "三菱UFJ",
+    "8306": "三菱UFJフィナンシャル",
     "9432": "NTT",
     "6501": "日立製作所",
     "6902": "デンソー",
     "7267": "ホンダ",
     "4568": "第一三共",
-    "6098": "リクルート",
+    "6098": "リクルートHD",
     "6861": "キーエンス",
     "7741": "HOYA",
-    "6367": "ダイキン",
+    "6367": "ダイキン工業",
     "4502": "武田薬品",
     "8031": "三井物産",
     "8058": "三菱商事",
-    "3382": "セブン＆アイ",
+    "3382": "セブン＆アイHD",
     "6526": "ソシオネクスト",
-    "3856": "Abalance",
+    "3856": "アバランス",
     "4565": "ソレイジア",
     "9433": "KDDI",
     "8802": "三菱地所",
     "6981": "村田製作所",
     "4062": "イビデン",
+    "3092": "ZOZO",
+    "7011": "三菱重工業",
+    "7246": "プレス工業",
+    "8001": "伊藤忠商事",
+    "8053": "住友商事",
+    "6141": "DMG森精機",
+    "9045": "京阪HD",
+    "4041": "日本曹達",
+    "3854": "アイル",
+    "6085": "アーキテクツ",
+    "4171": "グローバルインフォメーション",
+    "2928": "RIZAPグループ",
+    "2914": "JT",
+    "7974": "任天堂",
+    "6273": "SMC",
+    "8411": "みずほFG",
+    "8316": "三井住友FG",
+    "9020": "JR東日本",
+    "9434": "ソフトバンク",
+    "4755": "楽天グループ",
+    "4689": "LINEヤフー",
+    "6762": "TDK",
+    "7733": "オリンパス",
+    "6594": "ニデック",
+    "7751": "キヤノン",
+    "4503": "アステラス製薬",
+    "5108": "ブリヂストン",
+    "9022": "JR東海",
 }
+
+_JP_NAME_RE = re.compile(
+    r"[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF\uFF66-\uFF9F]"
+)
+
+
+def _has_japanese(text: str) -> bool:
+    return bool(text and _JP_NAME_RE.search(str(text)))
+
+
+def _normalize_symbol(symbol: str) -> str:
+    code = str(symbol or "").replace(".T", "").strip()
+    return code[:4] if len(code) >= 4 else code
+
+
+def resolve_japanese_name(symbol: str, info: dict | None = None) -> str:
+    """yfinance の英語名より辞書の日本語名を優先して返す"""
+    code = _normalize_symbol(symbol)
+    if code in STOCK_NAMES:
+        return STOCK_NAMES[code]
+    if info:
+        for key in ("shortName", "longName", "displayName"):
+            val = info.get(key)
+            if isinstance(val, str) and val.strip() and _has_japanese(val):
+                return val.strip()
+    return code or str(symbol)
+
 
 RANKING_SYMBOLS = list(STOCK_NAMES.keys())
 
@@ -1011,18 +1067,14 @@ def fetch_quote_snapshot(symbol: str) -> dict | None:
             return None
         chg_pct = round((current - prev) / prev * 100, 2)
         vol = safe_val(info.get("regularMarketVolume") or info.get("volume"))
-        name = (
-            info.get("shortName")
-            or info.get("longName")
-            or STOCK_NAMES.get(symbol, symbol)
-        )
+        name = resolve_japanese_name(symbol, info)
         return {
             "symbol": symbol,
             "name": name,
             "change_pct": chg_pct,
             "change_pct_str": f"{chg_pct:+.2f}",
             "volume": f"{int(vol):,}" if vol else "—",
-            "reason": "リアルタイム",
+            "reason": "速報",
         }
     except Exception:
         return None
@@ -1109,9 +1161,7 @@ def api_stock():
 
         data = {
             "symbol": symbol,
-            "name": info.get("longName")
-            or info.get("shortName")
-            or f"{symbol} 株式会社",
+            "name": resolve_japanese_name(symbol, info),
             "current": current,
             "prev_close": prev_close,
             "change": change,
@@ -1518,7 +1568,7 @@ def api_ranking():
         gainers = [
             {
                 "symbol": "3856",
-                "name": "Abalance",
+                "name": "アバランス",
                 "change_pct": "+28.4",
                 "reason": "TOB思惑",
                 "volume": "—",
@@ -1548,7 +1598,7 @@ def api_ranking():
             },
             {
                 "symbol": "6758",
-                "name": "ソニーG",
+                "name": "ソニーグループ",
                 "change_pct": "-6.4",
                 "reason": "材料悪化",
                 "volume": "—",
@@ -1669,7 +1719,7 @@ def api_notifications():
             "id": 1,
             "type": "TOB",
             "symbol": "3856",
-            "name": "Abalance",
+            "name": "アバランス",
             "message": "TOB発表 買付価格2,800円",
             "time": (now - timedelta(minutes=5)).strftime("%H:%M"),
             "priority": "high",

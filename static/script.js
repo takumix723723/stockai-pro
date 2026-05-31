@@ -252,6 +252,43 @@ function initSearchUX() {
 
 let deferredInstallPrompt = null;
 
+function isIosDevice() {
+  const ua = navigator.userAgent || '';
+  return /iPad|iPhone|iPod/.test(ua) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+function isStandalonePwa() {
+  return window.matchMedia('(display-mode: standalone)').matches ||
+    window.navigator.standalone === true;
+}
+
+function showIosInstallModal() {
+  const modal = document.getElementById('iosInstallModal');
+  if (modal) modal.hidden = false;
+}
+
+function hideIosInstallModal() {
+  const modal = document.getElementById('iosInstallModal');
+  if (modal) modal.hidden = true;
+}
+
+function showInstallBanner(mode) {
+  const banner = document.getElementById('installBanner');
+  const textEl = banner?.querySelector('.install-banner-text');
+  const installBtn = document.getElementById('installBtn');
+  if (!banner) return;
+
+  if (mode === 'ios') {
+    if (textEl) textEl.textContent = 'StockAI Pro をホーム画面に追加';
+    if (installBtn) installBtn.textContent = '追加方法';
+  } else {
+    if (textEl) textEl.textContent = 'StockAI Pro をアプリとしてインストール';
+    if (installBtn) installBtn.textContent = 'インストール';
+  }
+  banner.hidden = false;
+}
+
 function initAppSplash() {
   const splash = document.getElementById('appSplash');
   if (!splash) return;
@@ -270,26 +307,64 @@ function initPwaInstall() {
   const banner = document.getElementById('installBanner');
   const installBtn = document.getElementById('installBtn');
   const dismissBtn = document.getElementById('installDismiss');
+  const iosClose = document.getElementById('iosInstallClose');
+  const iosBackdrop = document.getElementById('iosInstallBackdrop');
+
+  if (typeof IS_DESKTOP_APP !== 'undefined' && IS_DESKTOP_APP) return;
+  if (isStandalonePwa()) return;
 
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredInstallPrompt = e;
     if (localStorage.getItem('installDismissed') === '1') return;
-    if (banner) banner.hidden = false;
+    showInstallBanner('android');
   });
 
-  installBtn?.addEventListener('click', async () => {
-    if (!deferredInstallPrompt) return;
-    deferredInstallPrompt.prompt();
-    await deferredInstallPrompt.userChoice;
+  window.addEventListener('appinstalled', () => {
     deferredInstallPrompt = null;
     if (banner) banner.hidden = true;
+    showToast('アプリのインストールが完了しました');
+  });
+
+  if (isIosDevice()) {
+    setTimeout(() => {
+      if (localStorage.getItem('installDismissed') === '1') return;
+      if (isStandalonePwa()) return;
+      showInstallBanner('ios');
+    }, 2500);
+  }
+
+  installBtn?.addEventListener('click', async () => {
+    if (deferredInstallPrompt) {
+      try {
+        await deferredInstallPrompt.prompt();
+        const choice = await deferredInstallPrompt.userChoice;
+        if (choice.outcome === 'accepted') {
+          showToast('インストールを開始しました');
+        }
+      } catch {
+        showToast('インストールできませんでした');
+      }
+      deferredInstallPrompt = null;
+      if (banner) banner.hidden = true;
+      return;
+    }
+
+    if (isIosDevice()) {
+      showIosInstallModal();
+      return;
+    }
+
+    showToast('ブラウザメニューから「アプリをインストール」を選んでください');
   });
 
   dismissBtn?.addEventListener('click', () => {
     localStorage.setItem('installDismissed', '1');
     if (banner) banner.hidden = true;
   });
+
+  iosClose?.addEventListener('click', hideIosInstallModal);
+  iosBackdrop?.addEventListener('click', hideIosInstallModal);
 }
 
 function showUpdateBanner(reg) {
