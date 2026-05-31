@@ -250,10 +250,9 @@ function initSearchUX() {
   input.addEventListener('focus', () => renderSearchHistory(histBox));
 }
 
-let deferredInstallPrompt = null;
 let installUiReady = false;
 
-/** PWA（ホーム画面追加）起動判定 — iPhone Safari 対応 */
+/** PWA（ホーム画面追加）起動判定 */
 function isStandalonePwa() {
   return (
     window.matchMedia('(display-mode: standalone)').matches ||
@@ -261,123 +260,115 @@ function isStandalonePwa() {
   );
 }
 
-function isInstallBannerClosed() {
-  return localStorage.getItem('installBannerClosed') === 'true';
+function isInstallGuideClosed() {
+  return localStorage.getItem('installGuideClosed') === 'true';
 }
 
-function closeInstallBanner() {
-  localStorage.setItem('installBannerClosed', 'true');
-  document.getElementById('installBanner')?.remove();
-  document.getElementById('iosInstallModal')?.remove();
+/** iPhone Safari ブラウザ（standalone 以外） */
+function isIphoneSafariBrowser() {
+  if (isStandalonePwa()) return false;
+  const ua = navigator.userAgent || '';
+  const isIOS =
+    /iPad|iPhone|iPod/.test(ua) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (!isIOS) return false;
+  return !/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua);
+}
+
+const IOS_SHARE_ICON_SVG =
+  '<svg class="ios-share-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+  '<rect x="5" y="11" width="14" height="10" rx="2" stroke="currentColor" stroke-width="1.6"/>' +
+  '<path d="M12 4v10M8.5 7.5L12 4l3.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>' +
+  '</svg>';
+
+function openInstallGuideModal() {
+  buildInstallGuideUi();
+  const modal = document.getElementById('installGuideModal');
+  if (modal) modal.classList.add('is-open');
+}
+
+function closeInstallGuideModal() {
+  const modal = document.getElementById('installGuideModal');
+  if (modal) modal.classList.remove('is-open');
+}
+
+function dismissInstallGuide() {
+  localStorage.setItem('installGuideClosed', 'true');
+  closeInstallGuideModal();
+  document.getElementById('installGuideBar')?.remove();
+  document.getElementById('installGuideModal')?.remove();
   installUiReady = false;
 }
 
-function buildInstallUi() {
+function buildInstallGuideUi() {
   if (installUiReady) return;
-  if (isStandalonePwa() || isInstallBannerClosed()) return;
+  if (isStandalonePwa() || isInstallGuideClosed() || !isIphoneSafariBrowser()) return;
 
-  const banner = document.createElement('div');
-  banner.id = 'installBanner';
-  banner.className = 'install-banner glass';
-  banner.hidden = true;
-  banner.innerHTML =
-    '<span class="install-banner-text">ホーム画面に追加できます</span>' +
-    '<button type="button" id="installBtn" class="install-btn">追加</button>' +
-    '<button type="button" id="installDismiss" class="install-dismiss" aria-label="閉じる">✕</button>';
+  const bar = document.createElement('div');
+  bar.id = 'installGuideBar';
+  bar.className = 'install-guide-bar';
+  bar.innerHTML =
+    '<span class="install-guide-icon" aria-hidden="true">📱</span>' +
+    '<span class="install-guide-text">ホーム画面に追加するとアプリとして使えます</span>' +
+    '<button type="button" id="installGuideBtn" class="install-guide-btn">追加方法</button>' +
+    '<button type="button" id="installGuideDismiss" class="install-guide-dismiss" aria-label="閉じる">✕</button>';
 
   const modal = document.createElement('div');
-  modal.id = 'iosInstallModal';
-  modal.className = 'ios-install-modal';
-  modal.hidden = true;
+  modal.id = 'installGuideModal';
+  modal.className = 'install-guide-modal';
   modal.setAttribute('aria-modal', 'true');
   modal.setAttribute('role', 'dialog');
   modal.innerHTML =
-    '<div class="ios-install-backdrop" id="iosInstallBackdrop"></div>' +
-    '<div class="ios-install-sheet glass">' +
-    '<div class="ios-install-title">ホーム画面に追加</div>' +
-    '<p class="ios-install-desc">StockAI Pro をアプリのように使えます。Safari で次の手順を行ってください。</p>' +
-    '<ol class="ios-install-steps">' +
-    '<li><span class="ios-step-icon">□↑</span> 画面下の<strong>共有</strong>ボタンをタップ</li>' +
-    '<li><strong>「ホーム画面に追加」</strong>を選択</li>' +
-    '<li>右上の<strong>「追加」</strong>をタップ</li>' +
+    '<div class="install-guide-backdrop" id="installGuideBackdrop"></div>' +
+    '<div class="install-guide-sheet">' +
+    '<div class="install-guide-title">ホーム画面に追加</div>' +
+    '<p class="install-guide-lead">StockAI Pro をアプリのように便利に使えます</p>' +
+    '<ol class="install-guide-steps">' +
+    '<li><span class="install-step-num">1</span><span class="install-step-body">画面下の<strong>共有</strong>ボタン ' +
+    IOS_SHARE_ICON_SVG + ' を押す</span></li>' +
+    '<li><span class="install-step-num">2</span><span class="install-step-body"><strong>「ホーム画面に追加」</strong>を選択</span></li>' +
+    '<li><span class="install-step-num">3</span><span class="install-step-body"><strong>StockAI Pro</strong> を追加</span></li>' +
     '</ol>' +
-    '<button type="button" id="iosInstallClose" class="install-btn ios-install-close">閉じる</button>' +
+    '<button type="button" id="installGuideClose" class="install-guide-close">閉じる</button>' +
     '</div>';
 
-  document.body.appendChild(banner);
+  document.body.appendChild(bar);
   document.body.appendChild(modal);
   installUiReady = true;
 
-  document.getElementById('installDismiss')?.addEventListener('click', closeInstallBanner);
-  document.getElementById('iosInstallClose')?.addEventListener('click', () => {
-    modal.hidden = true;
-  });
-  document.getElementById('iosInstallBackdrop')?.addEventListener('click', () => {
-    modal.hidden = true;
+  document.getElementById('installGuideBtn')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    openInstallGuideModal();
   });
 
-  document.getElementById('installBtn')?.addEventListener('click', async () => {
-    if (isStandalonePwa()) return;
-    if (deferredInstallPrompt) {
-      try {
-        await deferredInstallPrompt.prompt();
-        const choice = await deferredInstallPrompt.userChoice;
-        if (choice.outcome === 'accepted') {
-          showToast('インストールを開始しました');
-          closeInstallBanner();
-        }
-      } catch {
-        showToast('インストールできませんでした');
-      }
-      deferredInstallPrompt = null;
-      banner.hidden = true;
-      return;
-    }
-    if (isIosDevice()) {
-      modal.hidden = false;
-      return;
-    }
-    showToast('ブラウザメニューから「アプリをインストール」を選んでください');
+  document.getElementById('installGuideDismiss')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dismissInstallGuide();
+  });
+
+  document.getElementById('installGuideClose')?.addEventListener('click', () => {
+    closeInstallGuideModal();
+  });
+
+  document.getElementById('installGuideBackdrop')?.addEventListener('click', () => {
+    closeInstallGuideModal();
   });
 }
 
-function showInstallBanner(mode) {
-  if (isStandalonePwa() || isInstallBannerClosed()) return;
-  buildInstallUi();
-  const banner = document.getElementById('installBanner');
-  const textEl = banner?.querySelector('.install-banner-text');
-  const installBtn = document.getElementById('installBtn');
-  if (!banner) return;
-
-  if (mode === 'ios') {
-    if (textEl) textEl.textContent = 'ホーム画面に追加できます';
-    if (installBtn) installBtn.textContent = '追加方法';
-  } else {
-    if (textEl) textEl.textContent = 'アプリとしてインストールできます';
-    if (installBtn) installBtn.textContent = '追加';
-  }
-  banner.hidden = false;
+function showInstallGuideBar() {
+  if (isStandalonePwa() || isInstallGuideClosed() || !isIphoneSafariBrowser()) return;
+  buildInstallGuideUi();
 }
 
-/* standalone 起動時: キャッシュHTMLに残った要素も即削除 */
+/* standalone: 案内UIを生成・表示しない */
 if (isStandalonePwa()) {
   document.documentElement.classList.add('is-standalone');
+  document.getElementById('installGuideBar')?.remove();
+  document.getElementById('installGuideModal')?.remove();
   document.getElementById('installBanner')?.remove();
   document.getElementById('iosInstallModal')?.remove();
-} else if (!isInstallBannerClosed()) {
-  window.addEventListener('beforeinstallprompt', (e) => {
-    if (isStandalonePwa()) return;
-    if (isInstallBannerClosed()) return;
-    e.preventDefault();
-    deferredInstallPrompt = e;
-    showInstallBanner('android');
-  });
-
-  window.addEventListener('appinstalled', () => {
-    deferredInstallPrompt = null;
-    closeInstallBanner();
-    showToast('アプリのインストールが完了しました');
-  });
 }
 
 function isIosDevice() {
@@ -393,8 +384,8 @@ function initPwaInstall() {
 
   if (isStandalone) {
     document.documentElement.classList.add('is-standalone');
-    document.getElementById('installBanner')?.remove();
-    document.getElementById('iosInstallModal')?.remove();
+    document.getElementById('installGuideBar')?.remove();
+    document.getElementById('installGuideModal')?.remove();
     return;
   }
 
@@ -402,24 +393,26 @@ function initPwaInstall() {
     return;
   }
 
-  if (localStorage.getItem('installBannerClosed') === 'true') {
+  if (localStorage.getItem('installGuideClosed') === 'true') {
     return;
   }
 
-  if (isIosDevice()) {
-    setTimeout(() => {
-      if (
-        window.matchMedia('(display-mode: standalone)').matches ||
-        window.navigator.standalone === true
-      ) {
-        return;
-      }
-      if (localStorage.getItem('installBannerClosed') === 'true') {
-        return;
-      }
-      showInstallBanner('ios');
-    }, 2500);
+  if (!isIphoneSafariBrowser()) {
+    return;
   }
+
+  setTimeout(() => {
+    if (
+      window.matchMedia('(display-mode: standalone)').matches ||
+      window.navigator.standalone === true
+    ) {
+      return;
+    }
+    if (localStorage.getItem('installGuideClosed') === 'true') {
+      return;
+    }
+    showInstallGuideBar();
+  }, 2000);
 }
 
 function initAppSplash() {

@@ -103,33 +103,199 @@ body {
   font-size: 0.95rem;
 }
 
-/* インストール / 更新バナー */
-.install-banner {
+/* インストール案内（SBI風・iPhone Safari ブラウザのみ） */
+.install-guide-bar {
   position: fixed;
   bottom: calc(var(--bottom-nav-total) + 14px);
-  left: max(var(--page-pad), env(safe-area-inset-left, 0px));
-  right: max(var(--page-pad), env(safe-area-inset-right, 0px));
+  left: max(10px, env(safe-area-inset-left, 0px));
+  right: max(10px, env(safe-area-inset-right, 0px));
   max-width: var(--content-max);
   margin: 0 auto;
-  padding: 7px 8px 7px 12px;
-  border-radius: 10px;
+  padding: 8px 10px 8px 12px;
+  border-radius: 12px;
   z-index: 150;
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
-  gap: 6px;
-  font-size: 0.76rem;
-  line-height: 1.25;
-  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.35);
-  min-height: 0;
+  gap: 8px;
+  font-size: 0.74rem;
+  line-height: 1.3;
+  background: rgba(14, 20, 36, 0.96);
+  border: 1px solid rgba(100, 130, 180, 0.28);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
-.install-banner[hidden],
-html.is-standalone .install-banner,
-html.is-standalone .ios-install-modal {
+html.is-standalone .install-guide-bar,
+html.is-standalone .install-guide-modal {
   display: none !important;
   visibility: hidden;
   pointer-events: none;
+}
+
+.install-guide-icon {
+  flex-shrink: 0;
+  font-size: 0.95rem;
+  opacity: 0.9;
+}
+
+.install-guide-text {
+  flex: 1;
+  min-width: 0;
+  color: var(--text);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.install-guide-btn {
+  padding: 6px 11px;
+  border: 1px solid rgba(74, 111, 165, 0.55);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(59, 100, 160, 0.95), rgba(45, 78, 130, 0.95));
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.72rem;
+  cursor: pointer;
+  flex-shrink: 0;
+  white-space: nowrap;
+  min-height: 32px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.install-guide-btn:active {
+  opacity: 0.85;
+  transform: scale(0.98);
+}
+
+.install-guide-dismiss {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 4px;
+  min-width: 28px;
+  min-height: 28px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+/* 追加手順モーダル */
+.install-guide-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 600;
+  display: none;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.install-guide-modal.is-open {
+  display: flex;
+}
+
+.install-guide-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.58);
+}
+
+.install-guide-sheet {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  margin: 0 12px calc(var(--bottom-nav-total) + 8px);
+  padding: 18px 16px 16px;
+  border-radius: 16px;
+  background: rgba(16, 22, 38, 0.98);
+  border: 1px solid rgba(100, 130, 180, 0.25);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.install-guide-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin-bottom: 6px;
+  color: var(--text);
+}
+
+.install-guide-lead {
+  margin: 0 0 14px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.install-guide-steps {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.install-guide-steps li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.install-step-num {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(59, 130, 246, 0.2);
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-family: var(--mono);
+}
+
+.install-step-body {
+  flex: 1;
+  padding-top: 1px;
+}
+
+.install-step-body strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.ios-share-icon {
+  display: inline-block;
+  vertical-align: middle;
+  margin: 0 2px;
+  color: var(--accent);
+}
+
+.install-guide-close {
+  width: 100%;
+  padding: 11px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.install-guide-close:active {
+  opacity: 0.85;
+}
+
+/* 旧インストールUI（キャッシュ互換） */
+.install-banner,
+.ios-install-modal {
+  display: none !important;
 }
 
 .update-banner {
@@ -151,6 +317,7 @@ html.is-standalone .ios-install-modal {
   box-shadow: var(--shadow);
 }
 
+/* 旧 install-btn 互換 */
 .install-btn {
   padding: 5px 10px;
   border: none;
@@ -160,102 +327,7 @@ html.is-standalone .ios-install-modal {
   font-weight: 600;
   font-size: 0.74rem;
   cursor: pointer;
-  margin-left: auto;
-  min-height: 30px;
-  flex-shrink: 0;
-  white-space: nowrap;
 }
-
-.install-banner-text {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.install-dismiss {
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 0.9rem;
-  cursor: pointer;
-  padding: 2px 6px;
-  min-width: 28px;
-  min-height: 28px;
-  flex-shrink: 0;
-  line-height: 1;
-}
-
-/* iOS PWA 追加案内 */
-.ios-install-modal {
-  position: fixed;
-  inset: 0;
-  z-index: 500;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-}
-
-.ios-install-modal[hidden] {
-  display: none !important;
-}
-
-.ios-install-backdrop {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.55);
-}
-
-.ios-install-sheet {
-  position: relative;
-  width: 100%;
-  max-width: 480px;
-  margin: 0 12px calc(var(--safe-bottom) + 12px);
-  padding: 20px 18px;
-  border-radius: 16px;
-  box-shadow: var(--shadow);
-}
-
-.ios-install-title {
-  font-size: 1.1rem;
-  font-weight: 700;
-  margin-bottom: 8px;
-}
-
-.ios-install-desc {
-  margin: 0 0 14px;
-  font-size: 0.88rem;
-  color: var(--text-muted);
-  line-height: 1.5;
-}
-
-.ios-install-steps {
-  margin: 0 0 16px;
-  padding-left: 1.2rem;
-  font-size: 0.9rem;
-  line-height: 1.7;
-}
-
-.ios-install-steps li {
-  margin-bottom: 8px;
-}
-
-.ios-step-icon {
-  display: inline-block;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: var(--bg-elevated);
-  font-family: var(--mono);
-  font-size: 0.8rem;
-  margin-right: 4px;
-}
-
-.ios-install-close {
-  width: 100%;
-  margin-left: 0;
-}
-
 
 /* ヘッダー */
 .app-header {
