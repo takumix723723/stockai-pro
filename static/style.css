@@ -1447,6 +1447,84 @@ body.sub-panel-open .main-tabs {
   font-weight: 600;
 }
 
+/* 3ボタンナビ（中央＝登録銘柄） */
+.bottom-nav-triple {
+  padding: 4px 6px;
+  align-items: flex-end;
+}
+
+.bottom-nav-triple .bn-item {
+  flex: 1;
+}
+
+.bottom-nav-triple .bn-item-center {
+  position: relative;
+  flex: 1.1;
+  margin-top: -10px;
+  min-height: 56px;
+  padding: 8px 6px 10px;
+  border-radius: 14px;
+  background: linear-gradient(165deg, #3b82f6 0%, #2563eb 100%);
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.bottom-nav-triple .bn-item-center .bn-icon {
+  font-size: 1.5rem;
+}
+
+.bottom-nav-triple .bn-item-center .bn-label {
+  font-weight: 700;
+  color: #fff;
+}
+
+.bottom-nav-triple .bn-item-center:active {
+  background: linear-gradient(165deg, #2563eb 0%, #1d4ed8 100%);
+}
+
+.bottom-nav-triple .bn-item-center.active {
+  color: #fff;
+  box-shadow: 0 4px 20px rgba(37, 99, 235, 0.55);
+}
+
+.bn-badge {
+  position: absolute;
+  top: 2px;
+  right: calc(50% - 28px);
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.watch-page-desc {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin: -4px 0 14px;
+  line-height: 1.5;
+}
+
+.empty-watch-icon {
+  display: block;
+  font-size: 2rem;
+  margin-bottom: 8px;
+}
+
+.empty-watch-hint {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin: 8px 0 0;
+  line-height: 1.45;
+}
+
 .bn-item {
   flex: 1;
   display: flex;
