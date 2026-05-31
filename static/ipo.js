@@ -2,6 +2,23 @@
  * IPO / PO 画面 — SBI風カードUI
  * localStorage: ipoFavorites [{ id, type, notify: { bb_deadline, listing_date } }]
  */
+
+function ipoEscapeHtml(str) {
+  if (typeof window !== 'undefined' && typeof window.escapeHtml === 'function') {
+    return window.escapeHtml(str);
+  }
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+const IPO_FETCH_TIMEOUT_MS = 15000;
+const IPO_MAX_RETRIES = 5;
+
 const IpoFavorites = {
   KEY: 'ipoFavorites',
 
@@ -51,17 +68,56 @@ const IpoPage = {
   activeTab: 'ipo',
   lastMeta: null,
   _inited: false,
+  _ipoRetry: 0,
+  _poRetry: 0,
+
+  async fetchJson(path, opts = {}) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), IPO_FETCH_TIMEOUT_MS);
+    try {
+      const res = opts.silent
+        ? await fetchSilent(path, { signal: controller.signal })
+        : await fetch(path, { signal: controller.signal });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      if (json.status !== 'ok') throw new Error(json.message || 'failed');
+      return json;
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+
+  showLoadError(containerEl, message, retryFn, retryCount) {
+    if (!containerEl) return;
+    const exhausted = retryCount >= IPO_MAX_RETRIES;
+    containerEl.innerHTML = `
+      <div class="ipo-load-error">
+        <p class="ipo-load-error-msg">${ipoEscapeHtml(message)}</p>
+        ${exhausted ? `<button type="button" class="ipo-retry-btn" data-ipo-retry>再読み込み</button>` : `<p class="conn-retry-hint">接続再試行中… (${retryCount}/${IPO_MAX_RETRIES})</p>`}
+      </div>
+    `;
+    const btn = containerEl.querySelector('[data-ipo-retry]');
+    btn?.addEventListener('click', () => {
+      if (typeof retryFn === 'function') retryFn();
+    });
+  },
+
+  setMetaLoading() {
+    const label = document.getElementById('ipoPageMeta');
+    if (label) label.textContent = '読み込み中…';
+  },
+
+  setMetaError(message) {
+    const label = document.getElementById('ipoPageMeta');
+    if (label) label.textContent = message || '取得に失敗しました';
+  },
 
   init() {
     if (!document.getElementById('ipoList')) return;
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme) document.documentElement.setAttribute('data-theme', savedTheme);
 
-    if (this._inited) {
-      this.loadIpoList();
-      this.loadPoList();
-      return;
-    }
+    if (this._inited) return;
 
     const typeSelect = document.getElementById('ipoTypeSelect');
     typeSelect?.addEventListener('change', () => {
@@ -84,8 +140,6 @@ const IpoPage = {
     });
 
     this._inited = true;
-    this.loadIpoList();
-    this.loadPoList();
   },
 
   destroy() {
@@ -93,6 +147,8 @@ const IpoPage = {
     this.activeTab = 'ipo';
     this.ipoFilter = 'all';
     this.poFilter = 'all';
+    this._ipoRetry = 0;
+    this._poRetry = 0;
   },
 
   switchTab(name) {
@@ -142,15 +198,15 @@ const IpoPage = {
   sbiRow(label, value, extraClass = '') {
     return `
       <div class="ipo-sbi-row">
-        <span class="ipo-sbi-label">${escapeHtml(label)}</span>
-        <span class="ipo-sbi-value${extraClass ? ` ${extraClass}` : ''}">${escapeHtml(value)}</span>
+        <span class="ipo-sbi-label">${ipoEscapeHtml(label)}</span>
+        <span class="ipo-sbi-value${extraClass ? ` ${extraClass}` : ''}">${ipoEscapeHtml(value)}</span>
       </div>
     `;
   },
 
   favBtnHtml(id, type) {
     const on = IpoFavorites.isFavorite(id);
-    return `<button type="button" class="ipo-fav-btn${on ? ' is-on' : ''}" data-fav-id="${escapeHtml(id)}" data-fav-type="${escapeHtml(type)}" aria-label="お気に入り">${on ? '★' : '☆'}</button>`;
+    return `<button type="button" class="ipo-fav-btn${on ? ' is-on' : ''}" data-fav-id="${ipoEscapeHtml(id)}" data-fav-type="${ipoEscapeHtml(type)}" aria-label="お気に入り">${on ? '★' : '☆'}</button>`;
   },
 
   bindFavButtons(container) {
@@ -173,13 +229,13 @@ const IpoPage = {
         <div class="ipo-sbi-card-head">
           <div class="ipo-sbi-badges">
             <span class="ipo-sbi-badge">IPO</span>
-            <span class="ipo-sbi-status ${this.statusClass(item.status)}">${escapeHtml(item.status_label)}</span>
+            <span class="ipo-sbi-status ${this.statusClass(item.status)}">${ipoEscapeHtml(item.status_label)}</span>
           </div>
           ${this.favBtnHtml(item.id, 'ipo')}
         </div>
         <div class="ipo-sbi-title-block">
-          <h3 class="ipo-sbi-name">${escapeHtml(item.name_full || item.name)}</h3>
-          <span class="ipo-sbi-code">${escapeHtml(item.code)}</span>
+          <h3 class="ipo-sbi-name">${ipoEscapeHtml(item.name_full || item.name)}</h3>
+          <span class="ipo-sbi-code">${ipoEscapeHtml(item.code)}</span>
         </div>
         <div class="ipo-sbi-rows">
           ${this.sbiRow('市場区分', item.market)}
@@ -189,7 +245,7 @@ const IpoPage = {
           ${this.sbiRow('上場日', item.listing_date_fmt)}
           ${this.sbiRow('主幹事', item.lead_underwriter)}
         </div>
-        <a href="${escapeHtml(href)}" class="ipo-sbi-detail-btn">詳細を見る</a>
+        <a href="${ipoEscapeHtml(href)}" class="ipo-sbi-detail-btn">詳細を見る</a>
       </article>
     `;
   },
@@ -200,13 +256,13 @@ const IpoPage = {
         <div class="ipo-sbi-card-head">
           <div class="ipo-sbi-badges">
             <span class="ipo-sbi-badge po-sbi-badge">PO</span>
-            <span class="ipo-sbi-status ${this.statusClass(item.status)}">${escapeHtml(item.status_label)}</span>
+            <span class="ipo-sbi-status ${this.statusClass(item.status)}">${ipoEscapeHtml(item.status_label)}</span>
           </div>
           ${this.favBtnHtml(item.id, 'po')}
         </div>
         <div class="ipo-sbi-title-block">
-          <h3 class="ipo-sbi-name">${escapeHtml(item.name)}</h3>
-          <span class="ipo-sbi-code">${escapeHtml(item.code)}</span>
+          <h3 class="ipo-sbi-name">${ipoEscapeHtml(item.name)}</h3>
+          <span class="ipo-sbi-code">${ipoEscapeHtml(item.code)}</span>
         </div>
         <div class="ipo-sbi-rows">
           ${this.sbiRow('市場区分', item.market || '—')}
@@ -221,47 +277,89 @@ const IpoPage = {
 
   async loadIpoList(opts = {}) {
     const el = document.getElementById('ipoList');
-    if (!el) return;
+    if (!el) return false;
     const filter = opts.filter ?? this.ipoFilter;
     const q = filter !== 'all' ? `?status=${filter}` : '';
+    const isRetry = !!opts.isRetry;
+    if (!opts.silent && !isRetry) {
+      this.setMetaLoading();
+      el.innerHTML = '<div class="skeleton-list"><div class="skeleton-card-row"></div><div class="skeleton-card-row"></div></div>';
+    }
     try {
-      const res = opts.silent ? await fetchSilent(`/api/ipo${q}`) : await fetch(`/api/ipo${q}`);
-      const json = await res.json();
-      if (json.status !== 'ok') throw new Error('failed');
+      const json = await this.fetchJson(`/api/ipo${q}`, opts);
+      this._ipoRetry = 0;
       this.updatePageMeta(json.meta || {});
       if (!json.items.length) {
         el.innerHTML = '<div class="ipo-empty">該当するIPOがありません</div>';
-        return;
+        resetAutoRetry?.('ipoList');
+        return true;
       }
       el.innerHTML = json.items.map((i) => this.ipoCardHtml(i)).join('');
       this.bindFavButtons(el);
       resetAutoRetry?.('ipoList');
+      return true;
     } catch (e) {
-      console.error(e);
-      scheduleAutoRetry?.('ipoList', () => this.loadIpoList({ isRetry: true }), { containerEl: el });
+      console.error('loadIpoList', e);
+      this._ipoRetry += 1;
+      const msg = e.name === 'AbortError' ? 'IPOデータの取得がタイムアウトしました' : 'IPOデータの取得に失敗しました';
+      if (this._ipoRetry >= IPO_MAX_RETRIES) {
+        this.setMetaError('取得失敗 · 再読み込みしてください');
+        this.showLoadError(el, msg, () => {
+          this._ipoRetry = 0;
+          this.loadIpoList({ isRetry: true });
+        }, this._ipoRetry);
+        return false;
+      }
+      this.setMetaError(`再試行中 (${this._ipoRetry}/${IPO_MAX_RETRIES})`);
+      this.showLoadError(el, msg, null, this._ipoRetry);
+      await new Promise((r) => setTimeout(r, Math.min(2000 * 2 ** (this._ipoRetry - 1), 8000)));
+      if (document.getElementById('ipoList')) {
+        return this.loadIpoList({ ...opts, isRetry: true, silent: true });
+      }
+      return false;
     }
   },
 
   async loadPoList(opts = {}) {
     const el = document.getElementById('poList');
-    if (!el) return;
+    if (!el) return false;
     const filter = opts.filter ?? this.poFilter;
     const q = filter !== 'all' ? `?status=${filter}` : '';
+    const isRetry = !!opts.isRetry;
+    if (!opts.silent && !isRetry) {
+      el.innerHTML = '<div class="skeleton-list"><div class="skeleton-card-row"></div></div>';
+    }
     try {
-      const res = opts.silent ? await fetchSilent(`/api/po${q}`) : await fetch(`/api/po${q}`);
-      const json = await res.json();
-      if (json.status !== 'ok') throw new Error('failed');
+      const json = await this.fetchJson(`/api/po${q}`, opts);
+      this._poRetry = 0;
       if (this.activeTab === 'po') this.updatePageMeta(json.meta || {});
       if (!json.items.length) {
         el.innerHTML = '<div class="ipo-empty">該当するPOがありません</div>';
-        return;
+        resetAutoRetry?.('poList');
+        return true;
       }
       el.innerHTML = json.items.map((i) => this.poCardHtml(i)).join('');
       this.bindFavButtons(el);
       resetAutoRetry?.('poList');
+      return true;
     } catch (e) {
-      console.error(e);
-      scheduleAutoRetry?.('poList', () => this.loadPoList({ isRetry: true }), { containerEl: el });
+      console.error('loadPoList', e);
+      this._poRetry += 1;
+      const msg = e.name === 'AbortError' ? 'POデータの取得がタイムアウトしました' : 'POデータの取得に失敗しました';
+      if (this._poRetry >= IPO_MAX_RETRIES) {
+        if (this.activeTab === 'po') this.setMetaError('取得失敗 · 再読み込みしてください');
+        this.showLoadError(el, msg, () => {
+          this._poRetry = 0;
+          this.loadPoList({ isRetry: true });
+        }, this._poRetry);
+        return false;
+      }
+      this.showLoadError(el, msg, null, this._poRetry);
+      await new Promise((r) => setTimeout(r, Math.min(2000 * 2 ** (this._poRetry - 1), 8000)));
+      if (document.getElementById('poList')) {
+        return this.loadPoList({ ...opts, isRetry: true, silent: true });
+      }
+      return false;
     }
   },
 
@@ -293,36 +391,36 @@ const IpoPage = {
       main.innerHTML = `
         <section class="ipo-detail-hero card-premium">
           <div class="ipo-card-tags">
-            <span class="ipo-tag market">${escapeHtml(d.market)}</span>
-            <span class="ipo-tag ${this.statusClass(d.status)}">${escapeHtml(d.status_label)}</span>
-            <span class="ipo-tag sector">${escapeHtml(d.sector || '')}</span>
+            <span class="ipo-tag market">${ipoEscapeHtml(d.market)}</span>
+            <span class="ipo-tag ${this.statusClass(d.status)}">${ipoEscapeHtml(d.status_label)}</span>
+            <span class="ipo-tag sector">${ipoEscapeHtml(d.sector || '')}</span>
           </div>
           <div class="ipo-detail-price">
-            <span class="ipo-detail-range">${escapeHtml(d.price_range)}</span>
-            <span class="ipo-detail-expected">想定 ${escapeHtml(d.expected_price_fmt)}</span>
+            <span class="ipo-detail-range">${ipoEscapeHtml(d.price_range)}</span>
+            <span class="ipo-detail-expected">想定 ${ipoEscapeHtml(d.expected_price_fmt)}</span>
           </div>
           <div class="ipo-detail-dates">
-            <span>BB ${escapeHtml(d.bb_period_fmt)}</span>
-            <span>上場 ${escapeHtml(d.listing_date_fmt)}</span>
+            <span>BB ${ipoEscapeHtml(d.bb_period_fmt)}</span>
+            <span>上場 ${ipoEscapeHtml(d.listing_date_fmt)}</span>
           </div>
-          <div class="ipo-detail-underwriter">主幹事: ${escapeHtml(d.lead_underwriter)}</div>
+          <div class="ipo-detail-underwriter">主幹事: ${ipoEscapeHtml(d.lead_underwriter)}</div>
         </section>
 
         <section class="section-block">
           <h2 class="section-title">会社概要</h2>
-          <div class="ipo-text card-premium">${escapeHtml(d.overview || '')}</div>
+          <div class="ipo-text card-premium">${ipoEscapeHtml(d.overview || '')}</div>
         </section>
 
         <section class="section-block">
           <h2 class="section-title">事業内容</h2>
-          <div class="ipo-text card-premium ipo-pre">${escapeHtml(d.business || '')}</div>
+          <div class="ipo-text card-premium ipo-pre">${ipoEscapeHtml(d.business || '')}</div>
         </section>
 
         <section class="section-block">
           <h2 class="section-title">公募・需給</h2>
           <div class="ipo-detail-grid card-premium">
-            <div class="ipo-kv"><span class="ipo-k">吸収金額</span><span class="ipo-v">${escapeHtml(d.offering_amount_fmt || '—')}</span></div>
-            <div class="ipo-kv"><span class="ipo-k">ロックアップ</span><span class="ipo-v">${escapeHtml(d.lock_up || '—')}</span></div>
+            <div class="ipo-kv"><span class="ipo-k">吸収金額</span><span class="ipo-v">${ipoEscapeHtml(d.offering_amount_fmt || '—')}</span></div>
+            <div class="ipo-kv"><span class="ipo-k">ロックアップ</span><span class="ipo-v">${ipoEscapeHtml(d.lock_up || '—')}</span></div>
           </div>
         </section>
 
@@ -332,9 +430,9 @@ const IpoPage = {
           <div class="ipo-vc-list card-premium">
             ${d.vc_holdings.map((v) => `
               <div class="ipo-vc-row">
-                <span>${escapeHtml(v.name)}</span>
-                <span class="ipo-vc-ratio">${escapeHtml(v.ratio)}</span>
-                <span class="ipo-vc-lock">${escapeHtml(v.lock || '')}</span>
+                <span>${ipoEscapeHtml(v.name)}</span>
+                <span class="ipo-vc-ratio">${ipoEscapeHtml(v.ratio)}</span>
+                <span class="ipo-vc-lock">${ipoEscapeHtml(v.lock || '')}</span>
               </div>
             `).join('')}
           </div>
@@ -344,8 +442,8 @@ const IpoPage = {
           <h2 class="section-title">🤖 AI初値期待</h2>
           <div class="ipo-ai-card card-premium">
             <div class="ipo-ai-score">${ai.score ?? '—'}<span class="ipo-ai-sub">/ 100</span></div>
-            <div class="ipo-ai-label">${escapeHtml(ai.label || '')}</div>
-            <p class="ipo-ai-comment">${escapeHtml(ai.comment || '')}</p>
+            <div class="ipo-ai-label">${ipoEscapeHtml(ai.label || '')}</div>
+            <p class="ipo-ai-comment">${ipoEscapeHtml(ai.comment || '')}</p>
           </div>
         </section>
 
@@ -355,8 +453,8 @@ const IpoPage = {
           <div class="ipo-schedule card-premium">
             ${d.notify_events.map((ev) => `
               <div class="ipo-schedule-row">
-                <span class="ipo-schedule-type">${escapeHtml(ev.label)}</span>
-                <span class="ipo-schedule-at">${escapeHtml(String(ev.at).slice(0, 10))}</span>
+                <span class="ipo-schedule-type">${ipoEscapeHtml(ev.label)}</span>
+                <span class="ipo-schedule-at">${ipoEscapeHtml(String(ev.at).slice(0, 10))}</span>
               </div>
             `).join('')}
           </div>

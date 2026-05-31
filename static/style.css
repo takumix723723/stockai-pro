@@ -3720,6 +3720,30 @@ body.main-tab-ipo .ipo-page-embed .ipo-page-head {
   border-radius: 12px;
 }
 
+.ipo-load-error {
+  text-align: center;
+  padding: 28px 16px;
+  background: var(--bg-card);
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+}
+
+.ipo-load-error-msg {
+  margin: 0 0 12px;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}
+
+.ipo-retry-btn {
+  padding: 10px 20px;
+  border-radius: 8px;
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
 .ipo-disclaimer {
   margin: 16px 0 8px;
   padding: 0 4px;

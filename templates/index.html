@@ -517,10 +517,7 @@
 
     function loadIpoContent(opts = {}) {
       if (!document.getElementById('tab-ipo')) return Promise.resolve();
-      if (!IpoPage._inited) {
-        IpoPage.init();
-        return Promise.resolve();
-      }
+      IpoPage.init();
       return Promise.all([
         IpoPage.loadIpoList(opts),
         IpoPage.loadPoList(opts),

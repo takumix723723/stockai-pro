@@ -27,6 +27,11 @@ check("/api/ipo")
 check("/api/po")
 j = c.get("/api/ipo").get_json()
 print(f"  ipo items: {len(j.get('items', []))}")
+codes = [i.get("code") for i in j.get("items", [])]
+print(f"  ipo codes sample: {codes[:5]}")
+for need in ("581A", "584A"):
+    print(f"{'OK' if need in codes else 'MISSING'} has {need}")
+print(f"  source: {j.get('meta', {}).get('source', '?')}")
 
 html = c.get("/").data.decode("utf-8", errors="ignore")
 for needle in ["data-tab-nav=\"ipo\"", "ipo.js", "homeMarketBarHost", "syncHomeOnlyChrome"]:

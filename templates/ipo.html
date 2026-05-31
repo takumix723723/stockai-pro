@@ -70,6 +70,7 @@
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       IpoPage.init();
+      Promise.all([IpoPage.loadIpoList(), IpoPage.loadPoList()]);
     });
   </script>
 </body>
