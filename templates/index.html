@@ -227,6 +227,17 @@
       resetAutoRetry?.('marketIndices');
     }
 
+    function updateTabUrl(name) {
+      const url = new URL(window.location.href);
+      if (name === 'home') {
+        url.searchParams.delete('tab');
+      } else {
+        url.searchParams.set('tab', name);
+      }
+      const qs = url.searchParams.toString();
+      history.replaceState(null, '', url.pathname + (qs ? `?${qs}` : ''));
+    }
+
     function syncHomeOnlyChrome(tabName) {
       if (tabName === 'home') {
         mountHomeMarketBar();
@@ -370,7 +381,11 @@
 
     function setupHomeLazyLoad() {
       const themesEl = document.getElementById('marketThemes');
-      if (!themesEl || !('IntersectionObserver' in window)) return;
+      if (!themesEl) return;
+      if (!('IntersectionObserver' in window)) {
+        if (currentMainTab === 'home') ensureTabData('home');
+        return;
+      }
       const io = new IntersectionObserver((entries) => {
         if (entries.some((e) => e.isIntersecting)) {
           ensureTabData('home');
@@ -500,7 +515,10 @@
 
     function loadIpoContent(opts = {}) {
       if (!document.getElementById('tab-ipo')) return Promise.resolve();
-      if (!IpoPage._inited) IpoPage.init();
+      if (!IpoPage._inited) {
+        IpoPage.init();
+        return Promise.resolve();
+      }
       return Promise.all([
         IpoPage.loadIpoList(opts),
         IpoPage.loadPoList(opts),
@@ -628,6 +646,7 @@
       ensureTabData(name);
       window.scrollTo(0, 0);
       syncHomeOnlyChrome(name);
+      if (!opts?.fromSubPanel) updateTabUrl(name);
     }
 
     function updateWatchlistBadge() {

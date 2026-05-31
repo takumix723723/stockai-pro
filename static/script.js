@@ -406,7 +406,8 @@ window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   deferredInstallPrompt = e;
   if (document.getElementById('pwaInstallBtn')) {
-    updatePwaInstallUi({ onHome: true });
+    const tab = new URLSearchParams(window.location.search).get('tab');
+    updatePwaInstallUi({ onHome: !tab || tab === 'home' });
   }
 });
 
@@ -586,8 +587,6 @@ function initPwaInstall() {
   if (isIphoneSafariBrowser() && !isInstallGuideClosed()) {
     buildInstallGuideModal();
   }
-
-  updatePwaInstallUi({ onHome: true });
 }
 
 window.PwaInstall = {

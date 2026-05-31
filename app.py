@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from flask import Flask, render_template, jsonify, request, send_from_directory
+from flask import Flask, render_template, jsonify, request, send_from_directory, redirect
 from flask_cors import CORS
 import yfinance as yf
 import pandas as pd
@@ -2127,7 +2127,7 @@ def chart_legacy():
 
 @app.route("/ipo")
 def ipo_page():
-    return render_template("ipo.html")
+    return redirect("/?tab=ipo")
 
 
 @app.route("/ipo/<ipo_id>")
