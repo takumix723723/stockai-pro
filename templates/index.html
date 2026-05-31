@@ -87,16 +87,6 @@
     </div>
   </section>
 
-  <!-- 市場指数バー -->
-  <div class="market-bar" id="marketBar">
-    <div class="market-bar-row">
-      <div class="market-ticker" id="marketTicker">
-        <span class="mt-loading">市場データ読み込み中...</span>
-      </div>
-      <span class="live-sync" id="liveSyncStatus" aria-live="polite"></span>
-    </div>
-  </div>
-
   <!-- メインタブ（PC用） -->
   <nav class="main-tabs">
     <button type="button" class="tab-btn active" data-tab="home">ホーム</button>
@@ -107,6 +97,7 @@
   <div id="mainTabArea">
   <!-- ホームタブ -->
   <div class="tab-content active" id="tab-home">
+    <div id="homeMarketBarHost" class="home-market-host"></div>
     <div class="section-title">📊 今日の市場テーマ</div>
     <div class="market-themes" id="marketThemes">
       <div class="skeleton-cards"></div>
@@ -209,6 +200,39 @@
     let notifLoaded = false;
     let currentMainTab = 'home';
     let activeSubPanel = null;
+    let homeMarketBarMounted = false;
+
+    const HOME_MARKET_BAR_HTML =
+      '<div class="market-bar" id="marketBar">' +
+      '<div class="market-bar-row">' +
+      '<div class="market-ticker" id="marketTicker">' +
+      '<span class="mt-loading">市場データ読み込み中...</span></div>' +
+      '<span class="live-sync" id="liveSyncStatus" aria-live="polite"></span>' +
+      '</div></div>';
+
+    function mountHomeMarketBar() {
+      const host = document.getElementById('homeMarketBarHost');
+      if (!host || homeMarketBarMounted) return;
+      host.innerHTML = HOME_MARKET_BAR_HTML;
+      homeMarketBarMounted = true;
+      loadMarketIndices();
+    }
+
+    function unmountHomeMarketBar() {
+      const host = document.getElementById('homeMarketBarHost');
+      if (host) host.innerHTML = '';
+      homeMarketBarMounted = false;
+      resetAutoRetry?.('marketIndices');
+    }
+
+    function syncHomeOnlyChrome(tabName) {
+      if (tabName === 'home') {
+        mountHomeMarketBar();
+      } else {
+        unmountHomeMarketBar();
+      }
+      window.PwaInstall?.updateVisibility(tabName === 'home');
+    }
 
     const SUB_PANEL_META = {
       buried: {
@@ -285,7 +309,6 @@
       document.getElementById('folderModalOk').addEventListener('click', () => WatchlistUI.saveFolderModal());
 
       WatchlistUI.init();
-      loadMarketIndices();
       updateWatchlistBadge();
       setupHomeLazyLoad();
       initIndexAutoRefresh();
@@ -294,7 +317,7 @@
       if (urlTab && ['watchlist', 'ranking'].includes(urlTab)) {
         switchTab(urlTab);
       } else {
-        window.PwaInstall?.updateVisibility(true);
+        syncHomeOnlyChrome('home');
       }
     }
 
@@ -310,9 +333,15 @@
 
     async function refreshIndexPage() {
       if (document.hidden) return;
-      setLiveSyncStatus('liveSyncStatus', '更新中…', true);
+      if (homeMarketBarMounted) {
+        setLiveSyncStatus('liveSyncStatus', '更新中…', true);
+      }
 
-      const tasks = [loadMarketIndices({ silent: true })];
+      const tasks = [];
+
+      if (currentMainTab === 'home' && homeMarketBarMounted) {
+        tasks.push(loadMarketIndices({ silent: true }));
+      }
 
       if (currentMainTab === 'home' && tabLoaded.home) {
         tasks.push(loadHomeContent({ silent: true }));
@@ -325,7 +354,9 @@
       tasks.push(loadNotifications({ silent: true }));
 
       await Promise.allSettled(tasks);
-      setLiveSyncStatus('liveSyncStatus', formatLiveTime());
+      if (homeMarketBarMounted) {
+        setLiveSyncStatus('liveSyncStatus', formatLiveTime());
+      }
     }
 
     function setupHomeLazyLoad() {
@@ -528,7 +559,7 @@
       });
       ensureTabData(name);
       window.scrollTo(0, 0);
-      window.PwaInstall?.updateVisibility(name === 'home');
+      syncHomeOnlyChrome(name);
     }
 
     function updateWatchlistBadge() {
@@ -552,6 +583,7 @@
     async function loadMarketIndices(opts = {}) {
       const silent = !!opts.silent;
       const ticker = document.getElementById('marketTicker');
+      if (!ticker) return false;
       try {
         const res = silent ? await fetchSilent('/api/market_indices') : await fetch('/api/market_indices');
         const data = await res.json();

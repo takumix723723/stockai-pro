@@ -669,7 +669,16 @@ html.is-standalone .install-guide-modal {
   background: var(--bg-elevated);
 }
 
-/* 市場バー */
+/* 市場バー（ホームタブ内のみマウント） */
+.home-market-host {
+  margin-bottom: 8px;
+}
+
+.home-market-host:empty {
+  display: none;
+  margin: 0;
+}
+
 .market-bar {
   max-width: 960px;
   margin: 0 auto 8px;
