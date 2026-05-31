@@ -149,7 +149,9 @@
 
     <div class="section-title">🤖 市場AI要約</div>
     <div class="ai-summary-card" id="aiSummaryCard">
-      <div class="ai-summary-loading">AI分析中...</div>
+      <div class="skeleton-block skeleton-lg"></div>
+      <div class="skeleton-line"></div>
+      <div class="skeleton-line skeleton-sm"></div>
     </div>
   </div>
 
@@ -157,12 +159,10 @@
   <div class="tab-content" id="tab-ranking">
     <div class="section-title">📈 本日の急騰銘柄</div>
     <div class="ranking-list" id="gainersList">
-      <div class="loading-spin">読み込み中...</div>
+      <div class="tab-idle-hint">急騰・急落タブを開くと表示されます</div>
     </div>
     <div class="section-title mt-16">📉 本日の急落銘柄</div>
-    <div class="ranking-list" id="losersList">
-      <div class="loading-spin">読み込み中...</div>
-    </div>
+    <div class="ranking-list" id="losersList"></div>
   </div>
 
   <!-- 埋もれ株タブ -->
@@ -170,7 +170,7 @@
     <div class="section-title">💎 埋もれ銘柄発掘AI</div>
     <div class="buried-desc">AIがまだ市場に知られていない有望銘柄を独自スコアで発掘</div>
     <div class="buried-list" id="buriedList">
-      <div class="loading-spin">読み込み中...</div>
+      <div class="tab-idle-hint">発掘タブを開くと表示されます</div>
     </div>
   </div>
 
@@ -179,7 +179,7 @@
     <div class="section-title">🏦 ファンド先回りスクリーナー</div>
     <div class="buried-desc">ファンド・アクティビストが好む条件の銘柄を先回り発掘</div>
     <div class="fund-list" id="fundList">
-      <div class="loading-spin">読み込み中...</div>
+      <div class="tab-idle-hint">ファンドタブを開くと表示されます</div>
     </div>
   </div>
 
@@ -187,7 +187,7 @@
   <div class="tab-content" id="tab-market">
     <div class="section-title">🌐 市場全体AI分析</div>
     <div class="market-ai-content" id="marketAiContent">
-      <div class="loading-spin">読み込み中...</div>
+      <div class="tab-idle-hint">市場AIタブを開くと表示されます</div>
     </div>
   </div>
 
@@ -234,6 +234,22 @@
     });
 
     const watchCache = {};
+    const tabLoaded = { home: false, ranking: false, buried: false, fund: false, market: false };
+    const tabLoading = { home: false, ranking: false, buried: false, fund: false, market: false };
+    let notifLoaded = false;
+
+    function skeletonCards(n) {
+      return Array.from({ length: n }, () => '<div class="skeleton-card-row"></div>').join('');
+    }
+
+    function skeletonRankList() {
+      return skeletonCards(5);
+    }
+
+    function updatedLabel(data) {
+      if (!data || !data.updated) return '';
+      return `更新 ${data.updated}`;
+    }
 
     function initIndex() {
       const input = document.getElementById('searchInput');
@@ -275,13 +291,52 @@
         renderWatchlist();
       });
 
-      loadMarketSummary();
-      loadMarketAi();
-      loadNotifications();
-      loadRanking();
-      loadBuried();
-      loadFund();
+      loadMarketIndices();
       loadWatchlist();
+      setupHomeLazyLoad();
+    }
+
+    function setupHomeLazyLoad() {
+      const themesEl = document.getElementById('marketThemes');
+      if (!themesEl || !('IntersectionObserver' in window)) return;
+      const io = new IntersectionObserver((entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          ensureTabData('home');
+          io.disconnect();
+        }
+      }, { rootMargin: '80px' });
+      io.observe(themesEl);
+    }
+
+    function ensureTabData(name) {
+      if (tabLoaded[name] || tabLoading[name]) return;
+      tabLoading[name] = true;
+      const done = () => { tabLoading[name] = false; tabLoaded[name] = true; };
+      switch (name) {
+        case 'home':
+          loadHomeContent().finally(done);
+          break;
+        case 'ranking':
+          loadRanking().finally(done);
+          break;
+        case 'buried':
+          loadBuried().finally(done);
+          break;
+        case 'fund':
+          loadFund().finally(done);
+          break;
+        case 'market':
+          loadMarketAi().finally(done);
+          break;
+        default:
+          tabLoading[name] = false;
+      }
+    }
+
+    function ensureNotifications() {
+      if (notifLoaded) return;
+      notifLoaded = true;
+      loadNotifications();
     }
 
     function doSearch() {
@@ -311,6 +366,7 @@
       document.querySelectorAll('.bn-item').forEach((i) => {
         i.classList.toggle('active', i.dataset.tabNav === name);
       });
+      ensureTabData(name);
     }
 
     function chgClass(changeStr) {
@@ -318,22 +374,37 @@
       return String(changeStr).trim().startsWith('+') ? 'up' : 'down';
     }
 
-    async function loadMarketSummary() {
-      const themesEl = document.getElementById('marketThemes');
-      const aiCard = document.getElementById('aiSummaryCard');
+    async function loadMarketIndices() {
+      const ticker = document.getElementById('marketTicker');
       try {
-        const res = await fetchWithProgress('/api/market_summary');
+        const res = await fetch('/api/market_indices');
         const data = await res.json();
         if (data.status !== 'ok') throw new Error('failed');
 
-        const ticker = document.getElementById('marketTicker');
+        const meta = updatedLabel(data);
         ticker.innerHTML = data.indices.map((i) => `
           <span class="mt-item card-premium">
             <span class="mt-name">${escapeHtml(i.name)}</span>
             <span class="mt-val">${escapeHtml(i.value)}</span>
             <span class="mt-chg ${chgClass(i.change)}">${escapeHtml(i.change)}</span>
           </span>
-        `).join('');
+        `).join('') + (meta ? `<span class="mt-updated">${escapeHtml(meta)}</span>` : '');
+      } catch (e) {
+        console.error(e);
+        ticker.innerHTML = '<span class="mt-loading">指数取得失敗 <button type="button" class="retry-btn" onclick="loadMarketIndices()">再試行</button></span>';
+      }
+    }
+    window.loadMarketIndices = loadMarketIndices;
+
+    async function loadHomeContent() {
+      const themesEl = document.getElementById('marketThemes');
+      const aiCard = document.getElementById('aiSummaryCard');
+      themesEl.innerHTML = `<div class="skeleton-list">${skeletonCards(3)}</div>`;
+      aiCard.innerHTML = '<div class="skeleton-block skeleton-lg"></div><div class="skeleton-line"></div><div class="skeleton-line skeleton-sm"></div>';
+      try {
+        const res = await fetch('/api/market_summary');
+        const data = await res.json();
+        if (data.status !== 'ok') throw new Error('failed');
 
         themesEl.innerHTML = `
           <div class="theme-grid">
@@ -361,25 +432,34 @@
 
         aiCard.innerHTML = `
           <div class="ai-summary-header">
-            🤖 AI Market Summary
-            <span class="ai-time">${escapeHtml(data.updated)}更新</span>
+            🤖 市場AI要約
+            <span class="ai-time">${escapeHtml(updatedLabel(data))}</span>
           </div>
           <div class="ai-summary-text">${escapeHtml(data.summary)}</div>
         `;
       } catch (e) {
         console.error(e);
-        themesEl.innerHTML = '<div class="load-fail">読み込み失敗 <button type="button" class="retry-btn" onclick="loadMarketSummary()">再試行</button></div>';
+        themesEl.innerHTML = '<div class="load-fail">読み込み失敗 <button type="button" class="retry-btn" onclick="retryHomeContent()">再試行</button></div>';
       }
     }
 
+    function retryHomeContent() {
+      tabLoaded.home = false;
+      tabLoading.home = false;
+      ensureTabData('home');
+    }
+    window.retryHomeContent = retryHomeContent;
+
     async function loadMarketAi() {
+      const el = document.getElementById('marketAiContent');
+      el.innerHTML = `<div class="skeleton-list">${skeletonCards(4)}</div>`;
       try {
         const res = await fetch('/api/market_summary');
         const data = await res.json();
         if (data.status !== 'ok') return;
 
-        const el = document.getElementById('marketAiContent');
         el.innerHTML = `
+          <div class="market-ai-meta">${escapeHtml(updatedLabel(data))}</div>
           <div class="market-ai-indices">
             ${data.indices.map((i) => `
               <div class="market-ai-index">
@@ -392,7 +472,7 @@
           <div class="ai-summary-card">
             <div class="ai-summary-header">
               🤖 市場全体分析
-              <span class="ai-time">${escapeHtml(data.updated)}更新</span>
+              <span class="ai-time">${escapeHtml(updatedLabel(data))}</span>
             </div>
             <div class="ai-summary-text">${escapeHtml(data.summary)}</div>
           </div>
@@ -408,8 +488,16 @@
         `;
       } catch (e) {
         console.error(e);
+        el.innerHTML = '<div class="load-fail">読み込み失敗 <button type="button" class="retry-btn" onclick="retryMarketAi()">再試行</button></div>';
       }
     }
+
+    function retryMarketAi() {
+      tabLoaded.market = false;
+      tabLoading.market = false;
+      ensureTabData('market');
+    }
+    window.retryMarketAi = retryMarketAi;
 
     async function loadNotifications() {
       try {
@@ -445,13 +533,15 @@
     async function loadRanking() {
       const gainersEl = document.getElementById('gainersList');
       const losersEl = document.getElementById('losersList');
+      gainersEl.innerHTML = `<div class="skeleton-list">${skeletonRankList()}</div>`;
+      losersEl.innerHTML = '';
       try {
-        const res = await fetchWithProgress('/api/ranking');
+        const res = await fetch('/api/ranking');
         const data = await res.json();
         if (data.status !== 'ok') throw new Error('failed');
 
         const liveTag = data.live ? '<span class="live-badge">速報</span>' : '';
-        const updated = data.updated ? `<span class="rank-updated">更新 ${escapeHtml(data.updated)}</span>` : '';
+        const updated = data.updated ? `<span class="rank-updated">${escapeHtml(updatedLabel(data))}</span>` : '';
 
         gainersEl.innerHTML = (updated ? `<div class="rank-meta">${updated}${liveTag}</div>` : '') + data.gainers.map((s, i) => `
           <div class="rank-card card-premium" data-symbol="${escapeHtml(s.symbol)}">
@@ -485,18 +575,27 @@
           card.addEventListener('click', () => goToStock(card.dataset.symbol));
         });
       } catch (e) {
-        gainersEl.innerHTML = '<div class="load-fail">読み込み失敗 <button type="button" class="retry-btn" onclick="loadRanking()">再試行</button></div>';
+        gainersEl.innerHTML = '<div class="load-fail">読み込み失敗 <button type="button" class="retry-btn" onclick="retryRanking()">再試行</button></div>';
         losersEl.innerHTML = '';
       }
     }
 
+    function retryRanking() {
+      tabLoaded.ranking = false;
+      tabLoading.ranking = false;
+      ensureTabData('ranking');
+    }
+    window.retryRanking = retryRanking;
+    window.loadRanking = loadRanking;
+
     async function loadBuried() {
+      const list = document.getElementById('buriedList');
+      list.innerHTML = `<div class="skeleton-list">${skeletonCards(4)}</div>`;
       try {
         const res = await fetch('/api/buried');
         const data = await res.json();
         if (data.status !== 'ok') return;
 
-        const list = document.getElementById('buriedList');
         list.innerHTML = data.stocks.map((s) => `
           <div class="buried-card" data-symbol="${escapeHtml(s.symbol)}">
             <div class="buried-top">
@@ -524,17 +623,27 @@
         });
       } catch (e) {
         console.error(e);
+        list.innerHTML = '<div class="load-fail">読み込み失敗 <button type="button" class="retry-btn" onclick="retryBuried()">再試行</button></div>';
       }
     }
 
+    function retryBuried() {
+      tabLoaded.buried = false;
+      tabLoading.buried = false;
+      ensureTabData('buried');
+    }
+    window.retryBuried = retryBuried;
+
     async function loadFund() {
+      const list = document.getElementById('fundList');
+      list.innerHTML = `<div class="skeleton-list">${skeletonCards(3)}</div>`;
       try {
         const res = await fetch('/api/fund_screener');
         const data = await res.json();
         if (data.status !== 'ok') return;
 
-        const list = document.getElementById('fundList');
-        list.innerHTML = data.stocks.map((s) => `
+        const meta = updatedLabel(data);
+        list.innerHTML = (meta ? `<div class="fund-meta">${escapeHtml(meta)}</div>` : '') + data.stocks.map((s) => `
           <div class="fund-card" data-symbol="${escapeHtml(s.symbol)}">
             <div class="fund-top">
               <div>
@@ -559,8 +668,16 @@
         });
       } catch (e) {
         console.error(e);
+        list.innerHTML = '<div class="load-fail">読み込み失敗 <button type="button" class="retry-btn" onclick="retryFund()">再試行</button></div>';
       }
     }
+
+    function retryFund() {
+      tabLoaded.fund = false;
+      tabLoading.fund = false;
+      ensureTabData('fund');
+    }
+    window.retryFund = retryFund;
 
     function sortWatchSymbols(symbols) {
       const mode = localStorage.getItem('watchSort') || 'symbol';
@@ -599,9 +716,19 @@
 
       toolbar.style.display = 'flex';
       renderWatchlist();
-      saved.forEach((sym) => {
-        if (!watchCache[sym]) loadWatchItem(sym);
-      });
+      loadWatchlistStaggered(saved);
+    }
+
+    async function loadWatchlistStaggered(symbols) {
+      for (let i = 0; i < symbols.length; i += 1) {
+        const sym = symbols[i];
+        if (!watchCache[sym]) {
+          await loadWatchItem(sym);
+          if (i < symbols.length - 1) {
+            await new Promise((r) => setTimeout(r, 120));
+          }
+        }
+      }
     }
 
     function renderWatchlist() {
@@ -613,10 +740,10 @@
         const d = watchCache[sym];
         if (!d) {
           return `
-            <div class="watch-item card-premium" data-symbol="${escapeHtml(sym)}">
+            <div class="watch-item card-premium is-loading" data-symbol="${escapeHtml(sym)}">
               <div class="watch-left">
                 <div class="watch-symbol">${escapeHtml(sym)}</div>
-                <div class="watch-name">読み込み中...</div>
+                <div class="watch-name"><span class="skeleton-line skeleton-sm" style="display:inline-block;width:72px"></span></div>
               </div>
               <div class="watch-right"><span class="watch-loading-text">…</span></div>
               <button type="button" class="watch-remove" data-symbol="${escapeHtml(sym)}" aria-label="削除">✕</button>
@@ -703,8 +830,11 @@
     }
 
     function toggleNotifPanel() {
-      document.getElementById('notifPanel').classList.toggle('open');
+      const panel = document.getElementById('notifPanel');
+      const isOpening = !panel.classList.contains('open');
+      panel.classList.toggle('open');
       document.getElementById('notifOverlay').classList.toggle('show');
+      if (isOpening) ensureNotifications();
     }
 
     function closeNotifPanel() {

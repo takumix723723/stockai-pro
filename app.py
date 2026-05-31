@@ -57,6 +57,45 @@ def json_ok(payload, status=200):
         body, status=status, mimetype="application/json; charset=utf-8"
     )
 
+
+# ---------------------------------------------------------------------------
+# API メモリキャッシュ（TTL）
+# ---------------------------------------------------------------------------
+_API_CACHE: dict[str, tuple[float, dict]] = {}
+CACHE_TTL_MARKET = 480   # 8分
+CACHE_TTL_RANKING = 300  # 5分
+CACHE_TTL_FUND = 600     # 10分
+
+
+def _cache_get(key: str, ttl: int) -> dict | None:
+    row = _API_CACHE.get(key)
+    if not row:
+        return None
+    ts, data = row
+    if time.time() - ts > ttl:
+        return None
+    return data
+
+
+def _cache_set(key: str, data: dict) -> None:
+    _API_CACHE[key] = (time.time(), data)
+
+
+def _json_cached(key: str, ttl: int, builder):
+    """TTL キャッシュ付き JSON レスポンス"""
+    hit = _cache_get(key, ttl)
+    if hit is not None:
+        out = dict(hit)
+        out["cached"] = True
+        return jsonify(out)
+    payload = builder()
+    payload["cached"] = False
+    if "updated" not in payload:
+        payload["updated"] = datetime.now().strftime("%H:%M")
+    _cache_set(key, payload)
+    return jsonify(payload)
+
+
 # 市場指数（Yahoo Finance）
 # TOPIX は ^TOPX が取得不可のため TOPIX連動ETF(1306.T) を使用
 MARKET_INDEX_SYMBOLS = {
@@ -1502,9 +1541,34 @@ def offline_page():
     )
 
 
-@app.route("/api/market_summary")
-def api_market_summary():
-    """市場サマリーAI"""
+@app.route("/api/market_indices")
+def api_market_indices():
+    """市場指数のみ（初回表示用・軽量）"""
+
+    def build():
+        indices = []
+        for name, yf_sym in MARKET_INDEX_SYMBOLS.items():
+            try:
+                indices.append(fetch_index_quote(name, yf_sym))
+            except Exception:
+                traceback.print_exc()
+                indices.append({"name": name, "value": "N/A", "change": "N/A"})
+        try:
+            indices.append(fetch_index_quote("マザーズ", "^TSE50"))
+        except Exception:
+            indices.append(
+                {
+                    "name": "マザーズ",
+                    "value": "N/A",
+                    "change": f"-{random.uniform(0.1, 0.8):.2f}%",
+                }
+            )
+        return {"status": "ok", "indices": indices}
+
+    return _json_cached("market_indices", CACHE_TTL_MARKET, build)
+
+
+def _build_market_summary_payload():
     themes = [
         {
             "name": t["name"],
@@ -1525,7 +1589,6 @@ def api_market_summary():
             traceback.print_exc()
             indices.append({"name": name, "value": "N/A", "change": "N/A"})
 
-    # マザーズ（Yahoo: 東証グロース250指数）
     try:
         mothers = fetch_index_quote("マザーズ", "^TSE50")
         indices.append(mothers)
@@ -1545,81 +1608,85 @@ def api_market_summary():
         "AI関連・防衛・宇宙銘柄に資金流入が続いている。"
     )
 
-    return jsonify(
-        {
-            "status": "ok",
-            "themes": themes,
-            "indices": indices,
-            "summary": summary,
-            "updated": datetime.now().strftime("%H:%M"),
-        }
-    )
+    return {
+        "status": "ok",
+        "themes": themes,
+        "indices": indices,
+        "summary": summary,
+    }
+
+
+@app.route("/api/market_summary")
+def api_market_summary():
+    """市場サマリーAI（テーマ・指数・要約）"""
+    return _json_cached("market_summary", CACHE_TTL_MARKET, _build_market_summary_payload)
 
 
 @app.route("/api/ranking")
 def api_ranking():
-    """急騰急落ランキング（リアルタイム取得）"""
-    try:
-        gainers, losers = fetch_live_ranking(5)
-        if len(gainers) < 3:
-            raise ValueError("insufficient data")
-    except Exception:
-        traceback.print_exc()
-        gainers = [
-            {
-                "symbol": "3856",
-                "name": "アバランス",
-                "change_pct": "+28.4",
-                "reason": "TOB思惑",
-                "volume": "—",
-            },
-            {
-                "symbol": "6526",
-                "name": "ソシオネクスト",
-                "change_pct": "+12.3",
-                "reason": "上方修正",
-                "volume": "—",
-            },
-            {
-                "symbol": "9984",
-                "name": "ソフトバンクG",
-                "change_pct": "+8.2",
-                "reason": "ARM株高",
-                "volume": "—",
-            },
-        ]
-        losers = [
-            {
-                "symbol": "3092",
-                "name": "ZOZO",
-                "change_pct": "-11.2",
-                "reason": "下方修正",
-                "volume": "—",
-            },
-            {
-                "symbol": "6758",
-                "name": "ソニーグループ",
-                "change_pct": "-6.4",
-                "reason": "材料悪化",
-                "volume": "—",
-            },
-            {
-                "symbol": "9433",
-                "name": "KDDI",
-                "change_pct": "-3.8",
-                "reason": "競争激化",
-                "volume": "—",
-            },
-        ]
-    return jsonify(
-        {
+    """急騰急落ランキング（リアルタイム取得・キャッシュ）"""
+
+    def build():
+        try:
+            gainers, losers = fetch_live_ranking(5)
+            if len(gainers) < 3:
+                raise ValueError("insufficient data")
+        except Exception:
+            traceback.print_exc()
+            gainers = [
+                {
+                    "symbol": "3856",
+                    "name": "アバランス",
+                    "change_pct": "+28.4",
+                    "reason": "TOB思惑",
+                    "volume": "—",
+                },
+                {
+                    "symbol": "6526",
+                    "name": "ソシオネクスト",
+                    "change_pct": "+12.3",
+                    "reason": "上方修正",
+                    "volume": "—",
+                },
+                {
+                    "symbol": "9984",
+                    "name": "ソフトバンクG",
+                    "change_pct": "+8.2",
+                    "reason": "ARM株高",
+                    "volume": "—",
+                },
+            ]
+            losers = [
+                {
+                    "symbol": "3092",
+                    "name": "ZOZO",
+                    "change_pct": "-11.2",
+                    "reason": "下方修正",
+                    "volume": "—",
+                },
+                {
+                    "symbol": "6758",
+                    "name": "ソニーグループ",
+                    "change_pct": "-6.4",
+                    "reason": "材料悪化",
+                    "volume": "—",
+                },
+                {
+                    "symbol": "9433",
+                    "name": "KDDI",
+                    "change_pct": "-3.8",
+                    "reason": "競争激化",
+                    "volume": "—",
+                },
+            ]
+        return {
             "status": "ok",
             "gainers": gainers[:5],
             "losers": losers[:5],
-            "updated": datetime.now().strftime("%H:%M"),
             "live": True,
         }
-    )
+
+    return _json_cached("ranking", CACHE_TTL_RANKING, build)
 
 
 @app.route("/api/buried")
@@ -1673,41 +1740,45 @@ def api_buried():
 @app.route("/api/fund_screener")
 def api_fund_screener():
     """ファンド先回りスクリーナー"""
-    stocks = [
-        {
-            "symbol": "6141",
-            "name": "DMG森精機",
-            "score": 88,
-            "reason": "PBR低・現金多い・設備投資テーマ",
-            "fund_type": "バリューファンド好み",
-            "flags": ["PBR割安", "キャッシュリッチ", "低流動性"],
-        },
-        {
-            "symbol": "9045",
-            "name": "京阪HD",
-            "score": 84,
-            "reason": "資産株・不動産含み益・PBR0.7倍",
-            "fund_type": "アクティビスト狙い",
-            "flags": ["資産株", "PBR割安", "大量保有前兆"],
-        },
-        {
-            "symbol": "4041",
-            "name": "日本曹達",
-            "score": 80,
-            "reason": "現金>時価総額・農薬安定収益",
-            "fund_type": "バリューファンド",
-            "flags": ["キャッシュリッチ", "安定収益", "割安"],
-        },
-        {
-            "symbol": "8053",
-            "name": "住友商事",
-            "score": 76,
-            "reason": "ROE改善・株主還元強化・PBR割安",
-            "fund_type": "配当ファンド",
-            "flags": ["高配当", "ROE改善"],
-        },
-    ]
-    return jsonify({"status": "ok", "stocks": stocks})
+
+    def build():
+        stocks = [
+            {
+                "symbol": "6141",
+                "name": "DMG森精機",
+                "score": 88,
+                "reason": "PBR低・現金多い・設備投資テーマ",
+                "fund_type": "バリューファンド好み",
+                "flags": ["PBR割安", "キャッシュリッチ", "低流動性"],
+            },
+            {
+                "symbol": "9045",
+                "name": "京阪HD",
+                "score": 84,
+                "reason": "資産株・不動産含み益・PBR0.7倍",
+                "fund_type": "アクティビスト狙い",
+                "flags": ["資産株", "PBR割安", "大量保有前兆"],
+            },
+            {
+                "symbol": "4041",
+                "name": "日本曹達",
+                "score": 80,
+                "reason": "現金>時価総額・農薬安定収益",
+                "fund_type": "バリューファンド",
+                "flags": ["キャッシュリッチ", "安定収益", "割安"],
+            },
+            {
+                "symbol": "8053",
+                "name": "住友商事",
+                "score": 76,
+                "reason": "ROE改善・株主還元強化・PBR割安",
+                "fund_type": "配当ファンド",
+                "flags": ["高配当", "ROE改善"],
+            },
+        ]
+        return {"status": "ok", "stocks": stocks}
+
+    return _json_cached("fund_screener", CACHE_TTL_FUND, build)
 
 
 @app.route("/api/notifications")

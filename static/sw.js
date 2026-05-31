@@ -1,34 +1,36 @@
-const CACHE_VERSION = 'stockai-pro-v3';
-const STATIC_CACHE = `${CACHE_VERSION}-static`;
-const OFFLINE_URL = '/offline';
+/* StockAI Pro Service Worker v4 — 軽量・ネットワーク優先 */
+const CACHE_VERSION = 'stockai-pro-v4';
+const STATIC_CACHE = `${CACHE_VERSION}-core`;
 
 const PRECACHE = [
-  '/',
   '/offline',
   '/static/style.css',
   '/static/script.js',
   '/static/manifest.json',
   '/static/icons/icon-192.svg',
-  '/static/icons/icon-512.svg',
-  '/static/offline.html',
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(STATIC_CACHE).then((cache) => cache.addAll(PRECACHE).catch(() => {}))
+    caches
+      .open(STATIC_CACHE)
+      .then((cache) => cache.addAll(PRECACHE).catch(() => {}))
+      .then(() => self.skipWaiting())
   );
-  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
-        keys
-          .filter((k) => k.startsWith('stockai-pro-') && k !== STATIC_CACHE)
-          .map((k) => caches.delete(k))
+    caches
+      .keys()
+      .then((keys) =>
+        Promise.all(
+          keys
+            .filter((k) => k.startsWith('stockai-pro-') && k !== STATIC_CACHE)
+            .map((k) => caches.delete(k))
+        )
       )
-    ).then(() => self.clients.claim())
+      .then(() => self.clients.claim())
   );
 });
 
@@ -40,11 +42,11 @@ self.addEventListener('message', (event) => {
 
 async function offlineFallback() {
   const cache = await caches.open(STATIC_CACHE);
-  return (
-    (await cache.match('/offline')) ||
-    (await cache.match('/static/offline.html')) ||
-    Response.error()
-  );
+  return (await cache.match('/offline')) || Response.error();
+}
+
+function isPrecachedPath(pathname) {
+  return PRECACHE.some((p) => p === pathname || p === pathname.replace(/\/$/, ''));
 }
 
 self.addEventListener('fetch', (event) => {
@@ -55,35 +57,20 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
 
   if (url.pathname.startsWith('/api/')) {
+    event.respondWith(fetch(request));
+    return;
+  }
+
+  if (request.mode === 'navigate' || url.pathname === '/' || url.pathname.startsWith('/stock/')) {
     event.respondWith(
-      fetch(request).catch(() =>
-        caches.match(request).then((r) => r || offlineFallback())
-      )
+      fetch(request).catch(() => caches.match(request).then((r) => r || offlineFallback()))
     );
     return;
   }
 
-  if (
-    request.mode === 'navigate' ||
-    url.pathname === '/' ||
-    url.pathname.startsWith('/stock/') ||
-    url.pathname.startsWith('/static/')
-  ) {
+  if (url.pathname.startsWith('/static/') && isPrecachedPath(url.pathname)) {
     event.respondWith(
-      fetch(request)
-        .then((res) => {
-          if (res && res.status === 200) {
-            const clone = res.clone();
-            caches.open(STATIC_CACHE).then((c) => c.put(request, clone));
-          }
-          return res;
-        })
-        .catch(async () => {
-          const cached = await caches.match(request);
-          if (cached) return cached;
-          if (request.mode === 'navigate') return offlineFallback();
-          return offlineFallback();
-        })
+      caches.match(request).then((cached) => cached || fetch(request))
     );
   }
 });

@@ -694,6 +694,59 @@ body {
   animation: shimmer 1.2s infinite;
 }
 
+.skeleton-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.skeleton-card-row {
+  height: 68px;
+  border-radius: 12px;
+  background: linear-gradient(90deg, var(--bg-card) 25%, var(--bg-elevated) 50%, var(--bg-card) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.2s infinite;
+}
+
+.tab-idle-hint {
+  text-align: center;
+  padding: 28px 16px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.mt-updated,
+.fund-meta,
+.market-ai-meta {
+  flex: 0 0 auto;
+  align-self: center;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-family: var(--mono);
+  padding: 0 8px;
+  white-space: nowrap;
+}
+
+.market-ai-meta {
+  margin-bottom: 10px;
+  text-align: right;
+  width: 100%;
+}
+
+.fund-meta {
+  margin-bottom: 8px;
+  font-size: 0.75rem;
+}
+
+.watch-item.is-loading .watch-name {
+  color: var(--text-muted);
+}
+
+.watch-item.is-loading .watch-right {
+  opacity: 0.5;
+}
+
 @keyframes shimmer {
   0% {
     background-position: 200% 0;
