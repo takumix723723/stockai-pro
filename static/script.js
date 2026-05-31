@@ -196,7 +196,9 @@ async function checkWatchAlerts() {
     return;
   }
 
-  const list = JSON.parse(localStorage.getItem('watchlist') || '[]');
+  const list = typeof WatchlistStore !== 'undefined'
+    ? WatchlistStore.getAllSymbols()
+    : JSON.parse(localStorage.getItem('watchlist') || '[]');
   for (const sym of list) {
     try {
       const res = await fetch(`/api/stock?symbol=${encodeURIComponent(sym)}`);

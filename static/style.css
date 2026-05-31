@@ -1473,6 +1473,24 @@ body.sub-panel-open .main-tabs {
   margin-bottom: 16px;
 }
 
+.modal-label {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.modal-select {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-card);
+  color: var(--text);
+  font-size: 0.95rem;
+  margin-bottom: 14px;
+}
+
 .modal-btns {
   display: flex;
   gap: 10px;
@@ -1609,6 +1627,174 @@ body.sub-panel-open .main-tabs {
   font-size: 0.78rem;
   color: var(--text-muted);
   margin: 8px 0 0;
+  line-height: 1.45;
+}
+
+/* フォルダ型登録銘柄 */
+.wf-header-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.watch-folder-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.wf-card {
+  overflow: hidden;
+  transition: border-color 0.2s, opacity 0.2s;
+}
+
+.wf-card.is-dragging {
+  opacity: 0.55;
+}
+
+.wf-card.is-drop-target {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.wf-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 4px;
+  min-height: 52px;
+}
+
+.wf-drag-handle,
+.wf-sym-drag {
+  flex-shrink: 0;
+  width: 32px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  cursor: grab;
+  touch-action: none;
+  border-radius: 8px;
+}
+
+.wf-drag-handle:active,
+.wf-sym-drag:active {
+  cursor: grabbing;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.wf-toggle {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 4px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.wf-chevron {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  transition: transform 0.2s;
+  width: 12px;
+}
+
+.wf-chevron.is-open {
+  transform: rotate(90deg);
+}
+
+.wf-name {
+  font-weight: 700;
+  font-size: 0.92rem;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wf-count {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.wf-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.wf-action-btn {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.wf-action-btn:active {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.wf-action-danger {
+  color: var(--down);
+}
+
+.wf-body {
+  border-top: 1px solid var(--border);
+  padding: 4px 8px 8px;
+}
+
+.wf-body[hidden] {
+  display: none !important;
+}
+
+.wf-symbol-row {
+  grid-template-columns: 32px 1fr auto auto;
+  margin-bottom: 6px;
+}
+
+.wf-symbol-row.is-dragging {
+  opacity: 0.5;
+}
+
+.wf-symbol-row.is-drop-target {
+  outline: 1px dashed var(--accent);
+  border-radius: var(--radius);
+}
+
+.wf-empty,
+.wf-empty-folder {
+  text-align: center;
+  padding: 20px 12px;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.wf-empty-icon {
+  display: block;
+  font-size: 2rem;
+  margin-bottom: 8px;
+}
+
+.wf-empty-hint {
+  font-size: 0.76rem;
+  margin: 8px 0 12px;
   line-height: 1.45;
 }
 

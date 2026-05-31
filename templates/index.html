@@ -139,10 +139,25 @@
   <!-- サブ画面（発掘・ファンド・市場AI）動的生成 -->
   <div id="subPanelHost" class="sub-panel-host"></div>
 
-  <!-- ウォッチリスト追加モーダル -->
+  <!-- フォルダ作成・名前変更モーダル -->
+  <div class="modal-overlay" id="folderModal" style="display: none;">
+    <div class="modal-box">
+      <div class="modal-title" id="folderModalTitle">フォルダを作成</div>
+      <input type="text" id="folderNameInput" placeholder="例: 半導体 / 商社 / 監視中" maxlength="30" class="modal-input">
+      <div class="modal-btns">
+        <button type="button" class="modal-cancel" id="folderModalCancel">キャンセル</button>
+        <button type="button" class="modal-ok" id="folderModalOk">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 銘柄追加モーダル -->
   <div class="modal-overlay" id="watchModal" style="display: none;">
     <div class="modal-box">
-      <div class="modal-title">銘柄をウォッチリストに追加</div>
+      <div class="modal-title">銘柄を追加</div>
+      <label class="modal-label" for="watchFolderSelect">フォルダ</label>
+      <select id="watchFolderSelect" class="modal-select"></select>
+      <label class="modal-label" for="watchInput">銘柄コード</label>
       <input type="text" id="watchInput" placeholder="4桁コード（例: 7203）" maxlength="4" inputmode="numeric" class="modal-input">
       <div class="modal-btns">
         <button type="button" class="modal-cancel" id="watchModalCancel">キャンセル</button>
@@ -158,7 +173,7 @@
       <span class="bn-label">ホーム</span>
     </a>
     <a href="#" class="bn-item bn-item-center" data-tab-nav="watchlist">
-      <span class="bn-icon">⭐</span>
+      <span class="bn-icon">📋</span>
       <span class="bn-label">登録銘柄</span>
       <span class="bn-badge" id="watchlistBadge" hidden>0</span>
     </a>
@@ -168,13 +183,13 @@
     </a>
   </nav>
 
+  <script src="/static/watchlist.js"></script>
   <script src="/static/script.js"></script>
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       initIndex();
     });
 
-    const watchCache = {};
     const tabLoaded = { home: false, watchlist: false, ranking: false };
     const tabLoading = { home: false, watchlist: false, ranking: false };
     const panelLoaded = { buried: false, fund: false, market: false };
@@ -252,9 +267,12 @@
       document.getElementById('notifClose').addEventListener('click', closeNotifPanel);
       document.getElementById('notifOverlay').addEventListener('click', closeNotifPanel);
 
-      document.getElementById('watchModalCancel').addEventListener('click', closeWatchModal);
-      document.getElementById('watchModalOk').addEventListener('click', addToWatchlist);
+      document.getElementById('watchModalCancel').addEventListener('click', () => WatchlistUI.closeSymbolModal());
+      document.getElementById('watchModalOk').addEventListener('click', () => WatchlistUI.addSymbolFromModal());
+      document.getElementById('folderModalCancel').addEventListener('click', () => WatchlistUI.closeFolderModal());
+      document.getElementById('folderModalOk').addEventListener('click', () => WatchlistUI.saveFolderModal());
 
+      WatchlistUI.init();
       loadMarketIndices();
       updateWatchlistBadge();
       setupHomeLazyLoad();
@@ -282,7 +300,7 @@
       } else if (currentMainTab === 'ranking' && tabLoaded.ranking) {
         tasks.push(loadRanking({ silent: true }));
       } else if (currentMainTab === 'watchlist' && tabLoaded.watchlist) {
-        tasks.push(loadWatchlistContent({ silent: true }));
+        tasks.push(WatchlistUI.refresh({ silent: true }));
       }
 
       tasks.push(loadNotifications({ silent: true }));
@@ -326,39 +344,33 @@
       tab.id = 'tab-watchlist';
       tab.innerHTML =
         '<div class="watch-page-header section-header">' +
-        '<div class="section-title">⭐ 登録銘柄</div>' +
-        '<button type="button" class="add-watch-btn" id="addWatchBtnTab">＋ 追加</button>' +
-        '</div>' +
-        '<p class="watch-page-desc">毎日チェックする保有・監視株をすぐ開けます</p>' +
-        '<div class="watch-toolbar" id="watchToolbar" style="display: none;">' +
-        '<label class="watch-sort-label" for="watchSort">並び替え</label>' +
-        '<select id="watchSort" class="watch-sort-select">' +
-        '<option value="symbol">コード順</option>' +
-        '<option value="change_desc">騰落率 ↓</option>' +
-        '<option value="change_asc">騰落率 ↑</option>' +
-        '<option value="price_desc">株価 ↓</option>' +
-        '<option value="price_asc">株価 ↑</option>' +
-        '</select></div>' +
-        '<div class="watchlist" id="watchlist">' +
-        '<div class="skeleton-list">' + skeletonCards(3) + '</div></div>';
+        '<div class="section-title">📋 登録銘柄</div>' +
+        '<div class="wf-header-actions">' +
+        '<button type="button" class="add-watch-btn" id="addFolderBtn">＋ フォルダ</button>' +
+        '<button type="button" class="add-watch-btn" id="addWatchBtnTab">＋ 銘柄</button>' +
+        '</div></div>' +
+        '<p class="watch-page-desc">テーマ別・目的別にフォルダで整理（SBI登録銘柄風）</p>' +
+        '<div class="watch-folder-list" id="watchFolderList">' +
+        '<div class="skeleton-list">' + skeletonCards(2) + '</div></div>';
 
       area.appendChild(tab);
 
-      document.getElementById('addWatchBtnTab').addEventListener('click', addWatchPrompt);
-      const watchSort = document.getElementById('watchSort');
-      watchSort.value = localStorage.getItem('watchSort') || 'symbol';
-      watchSort.addEventListener('change', () => {
-        localStorage.setItem('watchSort', watchSort.value);
-        renderWatchlist();
-      });
+      document.getElementById('addFolderBtn').addEventListener('click', () => WatchlistUI.openFolderModal());
+      document.getElementById('addWatchBtnTab').addEventListener('click', () => WatchlistUI.openSymbolModal());
     }
 
     function destroyWatchlistTab() {
       const tab = document.getElementById('tab-watchlist');
       if (tab) tab.remove();
-      Object.keys(watchCache).forEach((k) => delete watchCache[k]);
+      WatchlistUI.destroy();
       tabLoaded.watchlist = false;
       tabLoading.watchlist = false;
+    }
+
+    function loadWatchlistContent(opts = {}) {
+      if (!document.getElementById('tab-watchlist')) return Promise.resolve();
+      if (!WatchlistUI.mounted) WatchlistUI.mountTab();
+      return WatchlistUI.refresh(opts);
     }
 
     function ensureRankingTabDom() {
@@ -501,7 +513,7 @@
     function updateWatchlistBadge() {
       const badge = document.getElementById('watchlistBadge');
       if (!badge) return;
-      const count = JSON.parse(localStorage.getItem('watchlist') || '[]').length;
+      const count = WatchlistStore.getTotalSymbolCount();
       if (count > 0) {
         badge.textContent = count > 99 ? '99+' : String(count);
         badge.hidden = false;
@@ -509,6 +521,7 @@
         badge.hidden = true;
       }
     }
+    window.updateWatchlistBadge = updateWatchlistBadge;
 
     function chgClass(changeStr) {
       if (!changeStr || changeStr === 'N/A') return 'neutral';
@@ -850,179 +863,6 @@
       }
     }
     window.retryFund = retryFund;
-
-    function sortWatchSymbols(symbols) {
-      const mode = localStorage.getItem('watchSort') || 'symbol';
-      return [...symbols].sort((a, b) => {
-        const da = watchCache[a];
-        const db = watchCache[b];
-        if (mode === 'symbol') return a.localeCompare(b);
-        const pa = da?.current ?? -Infinity;
-        const pb = db?.current ?? -Infinity;
-        const ca = da?.change_pct ?? -Infinity;
-        const cb = db?.change_pct ?? -Infinity;
-        if (mode === 'price_desc') return pb - pa;
-        if (mode === 'price_asc') return pa - pb;
-        if (mode === 'change_desc') return cb - ca;
-        if (mode === 'change_asc') return ca - cb;
-        return 0;
-      });
-    }
-
-    function loadWatchlistContent(opts = {}) {
-      const silent = !!opts.silent;
-      const container = document.getElementById('watchlist');
-      if (!container) return Promise.resolve();
-      const saved = JSON.parse(localStorage.getItem('watchlist') || '[]');
-      const toolbar = document.getElementById('watchToolbar');
-
-      if (saved.length === 0) {
-        if (toolbar) toolbar.style.display = 'none';
-        if (!silent) {
-          container.innerHTML = `
-            <div class="empty-watch card-premium">
-              <span class="empty-watch-icon">⭐</span>
-              <span>登録銘柄がありません</span>
-              <p class="empty-watch-hint">監視したい銘柄を追加して、毎日すぐチェック</p>
-              <button type="button" class="add-watch-btn-lg" id="addWatchBtnLgTab">＋ 銘柄を追加</button>
-            </div>
-          `;
-          document.getElementById('addWatchBtnLgTab')?.addEventListener('click', addWatchPrompt);
-        }
-        return Promise.resolve();
-      }
-
-      if (toolbar) toolbar.style.display = 'flex';
-      if (!silent) renderWatchlist();
-      if (silent) return refreshWatchlistPrices(true);
-      return loadWatchlistStaggered(saved);
-    }
-
-    async function refreshWatchlistPrices(silent) {
-      const saved = JSON.parse(localStorage.getItem('watchlist') || '[]');
-      await Promise.allSettled(saved.map((sym) => loadWatchItem(sym, true)));
-      renderWatchlist();
-    }
-
-    async function loadWatchlistStaggered(symbols) {
-      for (let i = 0; i < symbols.length; i += 1) {
-        const sym = symbols[i];
-        if (!watchCache[sym]) {
-          await loadWatchItem(sym);
-          if (i < symbols.length - 1) {
-            await new Promise((r) => setTimeout(r, 120));
-          }
-        }
-      }
-    }
-
-    function renderWatchlist() {
-      const saved = JSON.parse(localStorage.getItem('watchlist') || '[]');
-      const container = document.getElementById('watchlist');
-      const sorted = sortWatchSymbols(saved);
-
-      container.innerHTML = sorted.map((sym) => {
-        const d = watchCache[sym];
-        if (!d) {
-          return `
-            <div class="watch-item card-premium is-loading" data-symbol="${escapeHtml(sym)}">
-              <div class="watch-left">
-                <div class="watch-symbol">${escapeHtml(sym)}</div>
-                <div class="watch-name"><span class="skeleton-line skeleton-sm" style="display:inline-block;width:72px"></span></div>
-              </div>
-              <div class="watch-right"><span class="watch-loading-text">…</span></div>
-              <button type="button" class="watch-remove" data-symbol="${escapeHtml(sym)}" aria-label="削除">✕</button>
-            </div>
-          `;
-        }
-        const up = (d.change_pct ?? 0) >= 0;
-        const cls = up ? 'up' : 'down';
-        const price = d.current != null ? `¥${Number(d.current).toLocaleString()}` : 'N/A';
-        const chg = d.change != null ? `${up ? '+' : ''}${Number(d.change).toFixed(0)}` : '—';
-        const pct = d.change_pct != null ? `${up ? '+' : ''}${d.change_pct.toFixed(2)}%` : '—';
-        return `
-          <div class="watch-item card-premium" data-symbol="${escapeHtml(sym)}">
-            <div class="watch-left">
-              <div class="watch-symbol">${escapeHtml(sym)}</div>
-              <div class="watch-name">${escapeHtml(d.name || '')}</div>
-            </div>
-            <div class="watch-right">
-              <div class="watch-price">${price}</div>
-              <div class="watch-chg-row ${cls}">
-                <span>${chg}</span>
-                <span class="watch-pct">${pct}</span>
-              </div>
-            </div>
-            <button type="button" class="watch-remove" data-symbol="${escapeHtml(sym)}" aria-label="削除">✕</button>
-          </div>
-        `;
-      }).join('');
-
-      container.querySelectorAll('.watch-item').forEach((item) => {
-        item.addEventListener('click', (e) => {
-          if (e.target.closest('.watch-remove')) return;
-          goToStock(item.dataset.symbol);
-        });
-      });
-      container.querySelectorAll('.watch-remove').forEach((btn) => {
-        btn.addEventListener('click', (e) => removeWatch(e, btn.dataset.symbol));
-      });
-    }
-
-    async function loadWatchItem(sym, batch) {
-      try {
-        const res = await fetchSilent(`/api/stock?symbol=${encodeURIComponent(sym)}`);
-        const data = await res.json();
-        if (data.status !== 'ok') return;
-        watchCache[sym] = data.data;
-        if (!batch) renderWatchlist();
-      } catch (e) {
-        console.error(e);
-      }
-    }
-
-    function addWatchPrompt() {
-      document.getElementById('watchModal').style.display = 'flex';
-      document.getElementById('watchInput').value = '';
-      document.getElementById('watchInput').focus();
-    }
-
-    function closeWatchModal() {
-      document.getElementById('watchModal').style.display = 'none';
-    }
-
-    function addToWatchlist() {
-      const val = document.getElementById('watchInput').value.trim();
-      if (!/^\d{4}$/.test(val)) {
-        showToast('4桁コードを入力してください');
-        return;
-      }
-      const saved = JSON.parse(localStorage.getItem('watchlist') || '[]');
-      if (!saved.includes(val)) {
-        saved.push(val);
-        localStorage.setItem('watchlist', JSON.stringify(saved));
-      }
-      closeWatchModal();
-      updateWatchlistBadge();
-      if (document.getElementById('tab-watchlist')) {
-        tabLoaded.watchlist = false;
-        tabLoading.watchlist = false;
-        ensureTabData('watchlist');
-      } else {
-        showToast(`${val} を登録銘柄に追加しました`);
-      }
-    }
-
-    function removeWatch(e, sym) {
-      e.stopPropagation();
-      delete watchCache[sym];
-      const saved = JSON.parse(localStorage.getItem('watchlist') || '[]').filter((s) => s !== sym);
-      localStorage.setItem('watchlist', JSON.stringify(saved));
-      updateWatchlistBadge();
-      if (document.getElementById('tab-watchlist')) {
-        loadWatchlistContent();
-      }
-    }
 
     function toggleNotifPanel() {
       const panel = document.getElementById('notifPanel');
