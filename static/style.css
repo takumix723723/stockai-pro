@@ -2546,6 +2546,29 @@ body.stock-page {
   color: var(--text-muted);
 }
 
+.ob-board-scroll {
+  max-height: min(52vh, 420px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  margin-bottom: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.ob-board-scroll::-webkit-scrollbar {
+  width: 5px;
+}
+
+.ob-board-scroll::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+.ob-board {
+  padding: 2px 0;
+}
+
 .ob-board-head,
 .ob-row {
   display: grid;
@@ -2561,42 +2584,130 @@ body.stock-page {
   color: var(--text-muted);
   padding: 6px 0;
   border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
 }
 
 .ob-row {
-  padding: 7px 0;
+  padding: 5px 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  min-height: 28px;
 }
 
-.ob-row-sell .ob-price {
+.ob-qty-cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 6px;
+}
+
+.ob-qty-cell.sell {
+  justify-content: flex-start;
+}
+
+.ob-qty-cell.buy {
+  justify-content: flex-end;
+}
+
+.ob-qty-bar {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  border-radius: 3px;
+  opacity: 0.22;
+  max-width: 100%;
+}
+
+.ob-qty-bar.sell {
+  left: 0;
+  background: var(--down);
+}
+
+.ob-qty-bar.buy {
+  right: 0;
+  background: var(--up);
+}
+
+.ob-row-sell .ob-price,
+.ob-price.ask {
   color: var(--down);
+  font-weight: 600;
 }
 
-.ob-row-buy .ob-price {
+.ob-row-buy .ob-price,
+.ob-price.bid {
   color: var(--up);
+  font-weight: 600;
 }
 
 .ob-qty {
+  position: relative;
+  z-index: 1;
   font-family: var(--mono);
-  font-size: 0.78rem;
+  font-size: 0.76rem;
 }
 
 .ob-qty.sell {
   color: var(--down);
-  text-align: left;
-  padding-left: 8px;
 }
 
 .ob-qty.buy {
   color: var(--up);
-  text-align: right;
-  padding-right: 8px;
+}
+
+.ob-row-over,
+.ob-row-under {
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.ob-row-over .ob-price,
+.ob-row-under .ob-price {
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
 }
 
 .ob-row-mid {
   background: var(--bg-elevated);
-  font-size: 0.72rem;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 0;
+}
+
+.ob-mid-price {
+  font-family: var(--mono);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.ob-footer {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+  font-size: 0.78rem;
+}
+
+.ob-footer-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 4px;
+}
+
+.ob-footer-row.ob-footer-total {
+  font-weight: 700;
+  border-top: 1px dashed var(--border);
+  margin-top: 4px;
+  padding-top: 8px;
+}
+
+.ob-footer-label,
+.ob-footer-mid {
+  font-size: 0.68rem;
   color: var(--text-muted);
+  text-align: center;
 }
 
 .stock-chart-container {

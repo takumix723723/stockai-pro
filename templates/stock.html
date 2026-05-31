@@ -613,34 +613,73 @@
     window.loadSupply = loadSupply;
 
     function renderOrderbookPanel(b, panel) {
-      const sells = (b.levels || []).filter((l) => l.side === 'sell').sort((a, c) => c.price - a.price);
-      const buys = (b.levels || []).filter((l) => l.side === 'buy').sort((a, c) => c.price - a.price);
+      const sells = (b.sells || b.levels || []).filter((l) => l.side === 'sell').sort((a, c) => c.price - a.price);
+      const buys = (b.buys || b.levels || []).filter((l) => l.side === 'buy').sort((a, c) => c.price - a.price);
+      const allQty = [...sells, ...buys].map((l) => l.qty);
+      const maxQty = Math.max(...allQty, b.over_qty || 0, b.under_qty || 0, 1);
+
+      const sellRow = (l) => `
+        <div class="ob-row ob-row-sell">
+          <span class="ob-qty-cell sell">
+            <span class="ob-qty-bar sell" style="width:${Math.round((l.qty / maxQty) * 100)}%"></span>
+            <span class="ob-qty">${fmtNum(l.qty, 0)}</span>
+          </span>
+          <span class="ob-price ask">${fmtPrice(l.price)}</span>
+          <span class="ob-qty-cell"></span>
+        </div>`;
+
+      const buyRow = (l) => `
+        <div class="ob-row ob-row-buy">
+          <span class="ob-qty-cell"></span>
+          <span class="ob-price bid">${fmtPrice(l.price)}</span>
+          <span class="ob-qty-cell buy">
+            <span class="ob-qty-bar buy" style="width:${Math.round((l.qty / maxQty) * 100)}%"></span>
+            <span class="ob-qty">${fmtNum(l.qty, 0)}</span>
+          </span>
+        </div>`;
+
       panel.innerHTML = `
-        <div class="ob-source">${escapeHtml(b.source || '')}</div>
+        <div class="ob-source">${escapeHtml(b.source || '')} · ${sells.length + buys.length}本気配</div>
         <div class="ob-best-row">
           <div class="ob-best-item"><span class="ob-k">Best Bid</span><span class="ob-v bid">${fmtPrice(b.bid)}</span><span class="ob-q">${b.bid_size != null ? fmtNum(b.bid_size, 0) + '株' : '—'}</span></div>
           <div class="ob-spread"><span class="ob-k">Spread</span><span class="ob-v">${b.spread != null ? fmtNum(b.spread) : '—'}</span><span class="ob-sub">${b.spread_pct != null ? b.spread_pct + '%' : ''}</span></div>
           <div class="ob-best-item"><span class="ob-k">Best Ask</span><span class="ob-v ask">${fmtPrice(b.ask)}</span><span class="ob-q">${b.ask_size != null ? fmtNum(b.ask_size, 0) + '株' : '—'}</span></div>
         </div>
         <div class="ob-board-head"><span>売数量</span><span>値段</span><span>買数量</span></div>
-        <div class="ob-board">
-          ${sells.map((l) => `
-            <div class="ob-row ob-row-sell">
-              <span class="ob-qty sell">${fmtNum(l.qty, 0)}</span>
-              <span class="ob-price">${fmtPrice(l.price)}</span>
-              <span class="ob-qty"></span>
+        <div class="ob-board-scroll">
+          <div class="ob-board">
+            <div class="ob-row ob-row-over">
+              <span class="ob-qty-cell sell"><span class="ob-qty">${b.over_qty != null ? fmtNum(b.over_qty, 0) : '—'}</span></span>
+              <span class="ob-price ask">OVER</span>
+              <span class="ob-qty-cell"></span>
             </div>
-          `).join('')}
-          <div class="ob-row ob-row-mid">
-            <span></span><span class="ob-mid-label">気配</span><span></span>
+            ${sells.map(sellRow).join('')}
+            <div class="ob-row ob-row-mid">
+              <span></span>
+              <span class="ob-mid-price">${b.current != null ? fmtPrice(b.current) : '—'}</span>
+              <span></span>
+            </div>
+            ${buys.map(buyRow).join('')}
+            <div class="ob-row ob-row-under">
+              <span class="ob-qty-cell"></span>
+              <span class="ob-price bid">UNDER</span>
+              <span class="ob-qty-cell buy"><span class="ob-qty">${b.under_qty != null ? fmtNum(b.under_qty, 0) : '—'}</span></span>
+            </div>
           </div>
-          ${buys.map((l) => `
-            <div class="ob-row ob-row-buy">
-              <span class="ob-qty"></span>
-              <span class="ob-price">${fmtPrice(l.price)}</span>
-              <span class="ob-qty buy">${fmtNum(l.qty, 0)}</span>
-            </div>
-          `).join('')}
+        </div>
+        <div class="ob-footer">
+          <div class="ob-footer-row">
+            <span class="ob-footer-label">成行</span>
+            <span class="ob-qty sell">${b.market_sell_qty != null ? fmtNum(b.market_sell_qty, 0) : '—'}</span>
+            <span class="ob-footer-mid">成行</span>
+            <span class="ob-qty buy">${b.market_buy_qty != null ? fmtNum(b.market_buy_qty, 0) : '—'}</span>
+          </div>
+          <div class="ob-footer-row ob-footer-total">
+            <span class="ob-footer-label">売り総量</span>
+            <span class="ob-qty sell">${b.total_sell_qty != null ? fmtNum(b.total_sell_qty, 0) : '—'}</span>
+            <span class="ob-footer-mid">買い総量</span>
+            <span class="ob-qty buy">${b.total_buy_qty != null ? fmtNum(b.total_buy_qty, 0) : '—'}</span>
+          </div>
         </div>
       `;
     }

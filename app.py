@@ -861,8 +861,11 @@ def generate_credit_supply(symbol: str, hist: pd.DataFrame, ticker=None) -> dict
     return credit
 
 
+ORDERBOOK_DEPTH = 15  # 気配表示本数（売り・買い各15本）
+
+
 def fetch_orderbook(symbol: str, info: dict, current: float | None) -> dict:
-    """気配・板風（yfinance bid/ask + 軽量推定）"""
+    """気配・板風（yfinance bid/ask + 深さ推定）"""
     bid = safe_val(info.get("bid"))
     ask = safe_val(info.get("ask"))
     bid_size = safe_val(info.get("bidSize"))
@@ -870,43 +873,61 @@ def fetch_orderbook(symbol: str, info: dict, current: float | None) -> dict:
 
     price = current or safe_val(info.get("currentPrice") or info.get("regularMarketPrice"))
     tick = 1.0 if (price or 0) >= 1000 else (0.1 if (price or 0) >= 100 else 0.01)
+    prec = 2 if tick < 1 else 0
 
     if bid is None and price:
-        bid = round(price - tick, 2 if tick < 1 else 0)
+        bid = round(price - tick, prec)
     if ask is None and price:
-        ask = round(price + tick, 2 if tick < 1 else 0)
+        ask = round(price + tick, prec)
     if bid_size is None:
-        bid_size = int(_symbol_seed(symbol).randint(200, 8000))
+        bid_size = int(_symbol_seed(symbol).randint(800, 12000))
     if ask_size is None:
-        ask_size = int(_symbol_seed(symbol + "a").randint(200, 8000))
+        ask_size = int(_symbol_seed(symbol + "a").randint(800, 12000))
 
     spread = None
     spread_pct = None
     if bid is not None and ask is not None:
-        spread = round(ask - bid, 2 if tick < 1 else 0)
+        spread = round(ask - bid, prec)
         if ask > 0:
             spread_pct = round(spread / ask * 100, 3)
 
     rng = _symbol_seed(symbol + "ob")
-    levels = []
+    depth = ORDERBOOK_DEPTH
+    sells: list[dict] = []
+    buys: list[dict] = []
+
     if ask is not None:
-        for i in range(3, 0, -1):
-            levels.append(
+        for i in range(depth):
+            qty_base = ask_size * rng.uniform(0.35, 1.1)
+            depth_factor = 1.0 + (depth - i) * 0.06
+            qty = max(100, int(qty_base * depth_factor * rng.uniform(0.5, 1.3)))
+            sells.append(
                 {
                     "side": "sell",
-                    "price": round(ask + tick * (i - 1), 2 if tick < 1 else 0),
-                    "qty": int(ask_size * rng.uniform(0.4, 1.2) * i),
+                    "price": round(ask + tick * i, prec),
+                    "qty": qty,
                 }
             )
+
     if bid is not None:
-        for i in range(1, 4):
-            levels.append(
+        for i in range(depth):
+            qty_base = bid_size * rng.uniform(0.35, 1.1)
+            depth_factor = 1.0 + (depth - i) * 0.06
+            qty = max(100, int(qty_base * depth_factor * rng.uniform(0.5, 1.3)))
+            buys.append(
                 {
                     "side": "buy",
-                    "price": round(bid - tick * (i - 1), 2 if tick < 1 else 0),
-                    "qty": int(bid_size * rng.uniform(0.4, 1.2) * i),
+                    "price": round(bid - tick * i, prec),
+                    "qty": qty,
                 }
             )
+
+    sell_total = sum(l["qty"] for l in sells)
+    buy_total = sum(l["qty"] for l in buys)
+    over_qty = int(sell_total * rng.uniform(0.12, 0.28)) if sells else 0
+    under_qty = int(buy_total * rng.uniform(0.12, 0.28)) if buys else 0
+    market_sell = int(rng.randint(400, 6000))
+    market_buy = int(rng.randint(400, 6000))
 
     source = "yfinance"
     if info.get("bid") is None and info.get("ask") is None:
@@ -915,11 +936,21 @@ def fetch_orderbook(symbol: str, info: dict, current: float | None) -> dict:
     return {
         "bid": bid,
         "ask": ask,
+        "current": price,
         "spread": spread,
         "spread_pct": spread_pct,
         "bid_size": bid_size,
         "ask_size": ask_size,
-        "levels": levels,
+        "depth": depth,
+        "levels": sells + buys,
+        "sells": sells,
+        "buys": buys,
+        "over_qty": over_qty,
+        "under_qty": under_qty,
+        "market_sell_qty": market_sell,
+        "market_buy_qty": market_buy,
+        "total_sell_qty": sell_total + over_qty + market_sell,
+        "total_buy_qty": buy_total + under_qty + market_buy,
         "source": source,
     }
 
