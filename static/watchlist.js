@@ -1,5 +1,5 @@
 /**
- * フォルダ型登録銘柄 — ストア + UI
+ * 登録銘柄 — カテゴリ別スワイプ切替（SBI風）
  * localStorage 保存（将来 API/DB 差し替え可能）
  */
 (function (global) {
@@ -77,6 +77,10 @@
       }
     },
 
+    getFolders() {
+      return [...WatchlistStore.load().folders].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    },
+
     getFolder(id) {
       return WatchlistStore.load().folders.find((f) => f.id === id);
     },
@@ -95,12 +99,6 @@
         (f.symbols || []).forEach((s) => set.add(s));
       });
       return [...set];
-    },
-
-    getExpandedSymbols() {
-      return WatchlistStore.load().folders
-        .filter((f) => !f.collapsed)
-        .flatMap((f) => f.symbols || []);
     },
 
     createFolder(name) {
@@ -131,27 +129,6 @@
     deleteFolder(id) {
       const data = WatchlistStore.load();
       data.folders = data.folders.filter((f) => f.id !== id);
-      WatchlistStore.save(data);
-    },
-
-    reorderFolders(fromId, toId) {
-      const data = WatchlistStore.load();
-      const folders = data.folders.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-      const fromIdx = folders.findIndex((f) => f.id === fromId);
-      const toIdx = folders.findIndex((f) => f.id === toId);
-      if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return;
-      const [moved] = folders.splice(fromIdx, 1);
-      folders.splice(toIdx, 0, moved);
-      folders.forEach((f, i) => { f.order = i; });
-      data.folders = folders;
-      WatchlistStore.save(data);
-    },
-
-    toggleCollapsed(id, collapsed) {
-      const data = WatchlistStore.load();
-      const f = data.folders.find((x) => x.id === id);
-      if (!f) return;
-      f.collapsed = collapsed;
       WatchlistStore.save(data);
     },
 
@@ -192,6 +169,8 @@
   const WatchlistUI = {
     watchCache: {},
     mounted: false,
+    activeIndex: 0,
+    scrollSyncLock: false,
     drag: { type: null, folderId: null, symbol: null },
 
     init() {
@@ -201,78 +180,107 @@
     destroy() {
       Object.keys(WatchlistUI.watchCache).forEach((k) => delete WatchlistUI.watchCache[k]);
       WatchlistUI.mounted = false;
+      WatchlistUI.activeIndex = 0;
+      WatchlistUI.scrollSyncLock = false;
       WatchlistUI.drag = { type: null, folderId: null, symbol: null };
     },
 
-    mountTab() {
-      const list = document.getElementById('watchFolderList');
-      if (!list) return;
-      WatchlistUI.mounted = true;
-      WatchlistUI.renderFolders(false);
+    getActiveFolderId() {
+      const folders = WatchlistStore.getFolders();
+      return folders[WatchlistUI.activeIndex]?.id || folders[0]?.id || null;
     },
 
-    renderFolders(silent) {
-      const list = document.getElementById('watchFolderList');
-      if (!list) return Promise.resolve();
+    mountTab() {
+      if (!document.getElementById('watchCarousel')) return;
+      WatchlistUI.mounted = true;
+      WatchlistUI.render(false);
+    },
 
-      if (silent && list.querySelector('.wf-card')) {
-        return WatchlistUI.refreshExpandedPrices();
+    render(silent) {
+      const root = document.getElementById('watchSwipeRoot');
+      const tabBar = document.getElementById('watchTabBar');
+      const carousel = document.getElementById('watchCarousel');
+      if (!root || !tabBar || !carousel) return Promise.resolve();
+
+      if (silent && carousel.querySelector('.wl-panel')) {
+        return WatchlistUI.refreshActivePanelPrices();
       }
 
-      const data = WatchlistStore.load();
-      const folders = [...data.folders].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      const folders = WatchlistStore.getFolders();
+      if (WatchlistUI.activeIndex >= folders.length) {
+        WatchlistUI.activeIndex = Math.max(0, folders.length - 1);
+      }
 
       if (!folders.length) {
-        list.innerHTML = `
+        root.hidden = true;
+        let empty = document.getElementById('watchEmptyState');
+        if (!empty) {
+          empty = document.createElement('div');
+          empty.id = 'watchEmptyState';
+          root.parentElement?.appendChild(empty);
+        }
+        empty.hidden = false;
+        empty.innerHTML = `
           <div class="wf-empty card-premium">
-            <span class="wf-empty-icon">📁</span>
-            <p>フォルダがありません</p>
-            <p class="wf-empty-hint">半導体・商社・監視中 などテーマ別に整理できます</p>
-            <button type="button" class="add-watch-btn-lg" id="wfEmptyCreateBtn">＋ フォルダを作成</button>
+            <span class="wf-empty-icon">📋</span>
+            <p>カテゴリがありません</p>
+            <p class="wf-empty-hint">半導体・防衛・商社 などテーマ別に登録できます</p>
+            <button type="button" class="add-watch-btn-lg" id="wfEmptyCreateBtn">＋ カテゴリを作成</button>
           </div>
         `;
         document.getElementById('wfEmptyCreateBtn')?.addEventListener('click', () => WatchlistUI.openFolderModal());
         return Promise.resolve();
       }
 
-      list.innerHTML = folders.map((f) => WatchlistUI.folderCardHtml(f)).join('');
-      WatchlistUI.bindFolderEvents(list);
+      root.hidden = false;
+      const empty = document.getElementById('watchEmptyState');
+      if (empty) empty.hidden = true;
 
-      const expanded = folders.filter((f) => !f.collapsed);
-      if (!expanded.length) return Promise.resolve();
+      tabBar.innerHTML = folders.map((f, i) => `
+        <button type="button" class="wl-tab${i === WatchlistUI.activeIndex ? ' active' : ''}"
+          data-wl-index="${i}" data-folder-id="${WatchlistUI.esc(f.id)}" role="tab"
+          aria-selected="${i === WatchlistUI.activeIndex}">
+          ${WatchlistUI.esc(f.name)}
+          <span class="wl-tab-count">${(f.symbols || []).length}</span>
+        </button>
+      `).join('');
 
-      if (silent) {
-        return WatchlistUI.refreshExpandedPrices();
-      }
-      return WatchlistUI.loadExpandedPricesStaggered(expanded);
+      carousel.innerHTML = folders.map((f, i) => WatchlistUI.panelHtml(f, i)).join('');
+
+      WatchlistUI.bindTabBar(tabBar);
+      WatchlistUI.bindCarousel(carousel);
+      folders.forEach((f) => {
+        const body = carousel.querySelector(`[data-wl-panel-body="${f.id}"]`);
+        if (body) WatchlistUI.bindSymbolEvents(body, f.id);
+      });
+
+      WatchlistUI.scrollToIndex(WatchlistUI.activeIndex, false);
+      WatchlistUI.scrollTabIntoView(WatchlistUI.activeIndex);
+
+      return WatchlistUI.ensurePanelPrices(folders[WatchlistUI.activeIndex].id);
     },
 
-    folderCardHtml(f) {
+    panelHtml(f, index) {
       const count = (f.symbols || []).length;
-      const open = !f.collapsed;
-      const body = open
-        ? (count
-          ? (f.symbols || []).map((sym) => WatchlistUI.symbolRowHtml(f.id, sym)).join('')
-          : '<div class="wf-empty-folder">銘柄がありません — 「＋銘柄」から追加</div>')
-        : '';
+      const body = count
+        ? (f.symbols || []).map((sym) => WatchlistUI.symbolRowHtml(f.id, sym)).join('')
+        : '<div class="wf-empty-folder">銘柄がありません — 「＋ 銘柄」から追加</div>';
 
       return `
-        <div class="wf-card card-premium" data-folder-id="${WatchlistUI.esc(f.id)}">
-          <div class="wf-header">
-            <span class="wf-drag-handle" draggable="true" data-drag="folder" title="並び替え">☰</span>
-            <button type="button" class="wf-toggle" data-folder-id="${WatchlistUI.esc(f.id)}" aria-expanded="${open}">
-              <span class="wf-chevron ${open ? 'is-open' : ''}">▶</span>
-              <span class="wf-name">${WatchlistUI.esc(f.name)}</span>
-              <span class="wf-count">${count}</span>
-            </button>
-            <div class="wf-actions">
+        <section class="wl-panel" data-wl-panel="${index}" data-folder-id="${WatchlistUI.esc(f.id)}" role="tabpanel">
+          <div class="wl-panel-toolbar">
+            <div class="wl-panel-meta">
+              <span class="wl-panel-title">${WatchlistUI.esc(f.name)}</span>
+              <span class="wl-panel-count">${count}銘柄</span>
+            </div>
+            <div class="wl-panel-actions">
               <button type="button" class="wf-action-btn" data-action="add-symbol" data-folder-id="${WatchlistUI.esc(f.id)}" title="銘柄追加">＋</button>
               <button type="button" class="wf-action-btn" data-action="rename" data-folder-id="${WatchlistUI.esc(f.id)}" title="名前変更">✎</button>
               <button type="button" class="wf-action-btn wf-action-danger" data-action="delete" data-folder-id="${WatchlistUI.esc(f.id)}" title="削除">✕</button>
             </div>
           </div>
-          <div class="wf-body" data-folder-body="${WatchlistUI.esc(f.id)}" ${open ? '' : 'hidden'}>${body}</div>
-        </div>
+          <div class="wl-symbol-list" data-wl-panel-body="${WatchlistUI.esc(f.id)}">${body}</div>
+        </section>
       `;
     },
 
@@ -312,43 +320,27 @@
       `;
     },
 
-    refreshFolderBody(folderId) {
-      const f = WatchlistStore.getFolder(folderId);
-      const body = document.querySelector(`[data-folder-body="${folderId}"]`);
-      if (!f || !body || f.collapsed) return;
-      body.innerHTML = (f.symbols || []).length
-        ? (f.symbols || []).map((sym) => WatchlistUI.symbolRowHtml(folderId, sym)).join('')
-        : '<div class="wf-empty-folder">銘柄がありません — 「＋銘柄」から追加</div>';
-      WatchlistUI.bindSymbolEvents(body, folderId);
-    },
-
-    bindFolderEvents(list) {
-      list.querySelectorAll('.wf-toggle').forEach((btn) => {
+    bindTabBar(tabBar) {
+      tabBar.querySelectorAll('.wl-tab').forEach((btn) => {
         btn.addEventListener('click', () => {
-          const id = btn.dataset.folderId;
-          const f = WatchlistStore.getFolder(id);
-          if (!f) return;
-          const next = !f.collapsed;
-          WatchlistStore.toggleCollapsed(id, !next);
-          const card = list.querySelector(`[data-folder-id="${id}"]`);
-          const body = card?.querySelector(`[data-folder-body="${id}"]`);
-          const chevron = btn.querySelector('.wf-chevron');
-          if (body) {
-            if (next) {
-              body.hidden = false;
-              WatchlistUI.refreshFolderBody(id);
-              WatchlistUI.loadFolderPrices(id);
-            } else {
-              body.hidden = true;
-              body.innerHTML = '';
-            }
-          }
-          btn.setAttribute('aria-expanded', String(next));
-          chevron?.classList.toggle('is-open', next);
+          const idx = Number(btn.dataset.wlIndex);
+          if (!Number.isNaN(idx)) WatchlistUI.goToIndex(idx);
         });
       });
+    },
 
-      list.querySelectorAll('[data-action]').forEach((btn) => {
+    bindCarousel(carousel) {
+      carousel.onscroll = () => {
+        if (WatchlistUI.scrollSyncLock) return;
+        const idx = WatchlistUI.indexFromScroll(carousel);
+        if (idx !== WatchlistUI.activeIndex) {
+          WatchlistUI.setActiveIndex(idx, { scrollCarousel: false });
+          const folders = WatchlistStore.getFolders();
+          if (folders[idx]) WatchlistUI.ensurePanelPrices(folders[idx].id);
+        }
+      };
+
+      carousel.querySelectorAll('[data-action]').forEach((btn) => {
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
           const action = btn.dataset.action;
@@ -358,16 +350,63 @@
           else if (action === 'delete') WatchlistUI.confirmDeleteFolder(folderId);
         });
       });
+    },
 
-      list.querySelectorAll('.wf-card').forEach((card) => {
-        WatchlistUI.bindFolderDrag(card);
-        const folderId = card.dataset.folderId;
-        const f = WatchlistStore.getFolder(folderId);
-        if (f && !f.collapsed) {
-          const body = card.querySelector(`[data-folder-body="${folderId}"]`);
-          if (body) WatchlistUI.bindSymbolEvents(body, folderId);
-        }
+    indexFromScroll(carousel) {
+      const w = carousel.clientWidth || 1;
+      return Math.max(0, Math.round(carousel.scrollLeft / w));
+    },
+
+    goToIndex(index) {
+      WatchlistUI.setActiveIndex(index, { scrollCarousel: true });
+      const folders = WatchlistStore.getFolders();
+      if (folders[index]) WatchlistUI.ensurePanelPrices(folders[index].id);
+    },
+
+    setActiveIndex(index, opts = {}) {
+      const folders = WatchlistStore.getFolders();
+      if (!folders.length) return;
+      const next = Math.max(0, Math.min(index, folders.length - 1));
+      WatchlistUI.activeIndex = next;
+
+      document.querySelectorAll('.wl-tab').forEach((tab, i) => {
+        const on = i === next;
+        tab.classList.toggle('active', on);
+        tab.setAttribute('aria-selected', on ? 'true' : 'false');
       });
+
+      if (opts.scrollCarousel) WatchlistUI.scrollToIndex(next, true);
+      WatchlistUI.scrollTabIntoView(next);
+    },
+
+    scrollToIndex(index, smooth) {
+      const carousel = document.getElementById('watchCarousel');
+      if (!carousel) return;
+      const panel = carousel.querySelector(`[data-wl-panel="${index}"]`);
+      if (!panel) return;
+      WatchlistUI.scrollSyncLock = true;
+      carousel.scrollTo({ left: panel.offsetLeft, behavior: smooth ? 'smooth' : 'auto' });
+      window.setTimeout(() => { WatchlistUI.scrollSyncLock = false; }, smooth ? 320 : 0);
+    },
+
+    scrollTabIntoView(index) {
+      const tab = document.querySelector(`.wl-tab[data-wl-index="${index}"]`);
+      tab?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    },
+
+    refreshPanelBody(folderId) {
+      const f = WatchlistStore.getFolder(folderId);
+      const body = document.querySelector(`[data-wl-panel-body="${folderId}"]`);
+      if (!f || !body) return;
+      body.innerHTML = (f.symbols || []).length
+        ? (f.symbols || []).map((sym) => WatchlistUI.symbolRowHtml(folderId, sym)).join('')
+        : '<div class="wf-empty-folder">銘柄がありません — 「＋ 銘柄」から追加</div>';
+      WatchlistUI.bindSymbolEvents(body, folderId);
+      const panel = body.closest('.wl-panel');
+      const countEl = panel?.querySelector('.wl-panel-count');
+      if (countEl) countEl.textContent = `${(f.symbols || []).length}銘柄`;
+      const tab = document.querySelector(`.wl-tab[data-folder-id="${folderId}"] .wl-tab-count`);
+      if (tab) tab.textContent = String((f.symbols || []).length);
     },
 
     bindSymbolEvents(container, folderId) {
@@ -383,40 +422,9 @@
           e.stopPropagation();
           WatchlistStore.removeSymbol(btn.dataset.folderId, btn.dataset.symbol);
           delete WatchlistUI.watchCache[btn.dataset.symbol];
-          WatchlistUI.renderFolders(false);
+          WatchlistUI.refreshPanelBody(btn.dataset.folderId);
           global.updateWatchlistBadge?.();
         });
-      });
-    },
-
-    bindFolderDrag(card) {
-      const folderId = card.dataset.folderId;
-      const handle = card.querySelector('.wf-drag-handle');
-      if (!handle) return;
-      handle.addEventListener('dragstart', (e) => {
-        WatchlistUI.drag = { type: 'folder', folderId, symbol: null };
-        card.classList.add('is-dragging');
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', folderId);
-      });
-      handle.addEventListener('dragend', () => {
-        card.classList.remove('is-dragging');
-        document.querySelectorAll('.wf-card.is-drop-target').forEach((el) => el.classList.remove('is-drop-target'));
-        WatchlistUI.drag = { type: null, folderId: null, symbol: null };
-      });
-      card.addEventListener('dragover', (e) => {
-        if (WatchlistUI.drag.type !== 'folder') return;
-        e.preventDefault();
-        if (WatchlistUI.drag.folderId !== folderId) card.classList.add('is-drop-target');
-      });
-      card.addEventListener('dragleave', () => card.classList.remove('is-drop-target'));
-      card.addEventListener('drop', (e) => {
-        e.preventDefault();
-        card.classList.remove('is-drop-target');
-        if (WatchlistUI.drag.type === 'folder' && WatchlistUI.drag.folderId !== folderId) {
-          WatchlistStore.reorderFolders(WatchlistUI.drag.folderId, folderId);
-          WatchlistUI.renderFolders(false);
-        }
       });
     },
 
@@ -448,19 +456,19 @@
         row.classList.remove('is-drop-target');
         if (WatchlistUI.drag.type === 'symbol' && WatchlistUI.drag.symbol !== sym) {
           WatchlistStore.reorderSymbols(folderId, WatchlistUI.drag.symbol, sym);
-          WatchlistUI.refreshFolderBody(folderId);
+          WatchlistUI.refreshPanelBody(folderId);
         }
       });
     },
 
-    async loadWatchItem(sym, batch) {
+    async loadWatchItem(sym) {
       try {
         const fetchFn = global.fetchSilent || fetch;
         const res = await fetchFn(`/api/stock?symbol=${encodeURIComponent(sym)}`);
         const data = await res.json();
         if (data.status !== 'ok') return;
         WatchlistUI.watchCache[sym] = data.data;
-        if (!batch) WatchlistUI.updateSymbolRows(sym);
+        WatchlistUI.updateSymbolRows(sym);
       } catch (e) {
         console.error(e);
       }
@@ -470,43 +478,40 @@
       document.querySelectorAll(`.wf-symbol-row[data-symbol="${sym}"]`).forEach((row) => {
         const folderId = row.dataset.folderId;
         const parent = row.parentElement;
-        if (parent) {
-          const idx = [...parent.querySelectorAll('.wf-symbol-row')].indexOf(row);
-          const tmp = document.createElement('div');
-          tmp.innerHTML = WatchlistUI.symbolRowHtml(folderId, sym);
-          const newRow = tmp.firstElementChild;
-          row.replaceWith(newRow);
-          WatchlistUI.bindSymbolEvents(parent, folderId);
-        }
+        if (!parent) return;
+        const tmp = document.createElement('div');
+        tmp.innerHTML = WatchlistUI.symbolRowHtml(folderId, sym);
+        const newRow = tmp.firstElementChild;
+        row.replaceWith(newRow);
+        WatchlistUI.bindSymbolEvents(parent, folderId);
       });
     },
 
     async loadFolderPrices(folderId) {
       const f = WatchlistStore.getFolder(folderId);
-      if (!f || f.collapsed) return;
+      if (!f) return;
       for (let i = 0; i < (f.symbols || []).length; i += 1) {
         const sym = f.symbols[i];
-        await WatchlistUI.loadWatchItem(sym, true);
-        WatchlistUI.updateSymbolRows(sym);
+        await WatchlistUI.loadWatchItem(sym);
         if (i < f.symbols.length - 1) await new Promise((r) => setTimeout(r, 100));
       }
     },
 
-    async loadExpandedPricesStaggered(folders) {
-      for (const f of folders) {
-        await WatchlistUI.loadFolderPrices(f.id);
-      }
+    async ensurePanelPrices(folderId) {
+      await WatchlistUI.loadFolderPrices(folderId);
     },
 
-    async refreshExpandedPrices() {
-      const symbols = WatchlistStore.getExpandedSymbols();
-      await Promise.allSettled(symbols.map((sym) => WatchlistUI.loadWatchItem(sym, true)));
-      symbols.forEach((sym) => WatchlistUI.updateSymbolRows(sym));
+    async refreshActivePanelPrices() {
+      const folderId = WatchlistUI.getActiveFolderId();
+      if (!folderId) return;
+      const f = WatchlistStore.getFolder(folderId);
+      if (!f) return;
+      await Promise.allSettled((f.symbols || []).map((sym) => WatchlistUI.loadWatchItem(sym)));
     },
 
     refresh(opts = {}) {
       if (!WatchlistUI.mounted) return Promise.resolve();
-      return WatchlistUI.renderFolders(!!opts.silent);
+      return WatchlistUI.render(!!opts.silent);
     },
 
     openFolderModal(editId) {
@@ -517,10 +522,10 @@
       modal.dataset.editId = editId || '';
       if (editId) {
         const f = WatchlistStore.getFolder(editId);
-        title.textContent = 'フォルダ名を変更';
+        title.textContent = 'カテゴリ名を変更';
         input.value = f?.name || '';
       } else {
-        title.textContent = 'フォルダを作成';
+        title.textContent = 'カテゴリを作成';
         input.value = '';
       }
       modal.style.display = 'flex';
@@ -537,19 +542,20 @@
       const input = document.getElementById('folderNameInput');
       const name = input?.value.trim();
       if (!name) {
-        global.showToast?.('フォルダ名を入力してください');
+        global.showToast?.('カテゴリ名を入力してください');
         return;
       }
       const editId = modal?.dataset.editId;
       if (editId) {
         WatchlistStore.renameFolder(editId, name);
-        global.showToast?.('フォルダ名を変更しました');
+        global.showToast?.('カテゴリ名を変更しました');
       } else {
-        WatchlistStore.createFolder(name);
+        const folder = WatchlistStore.createFolder(name);
+        WatchlistUI.activeIndex = WatchlistStore.getFolders().findIndex((f) => f.id === folder.id);
         global.showToast?.(`「${name}」を作成しました`);
       }
       WatchlistUI.closeFolderModal();
-      WatchlistUI.renderFolders(false);
+      WatchlistUI.render(false);
       global.updateWatchlistBadge?.();
     },
 
@@ -559,29 +565,29 @@
       if (!confirm(`「${f.name}」を削除しますか？\n（中の銘柄も削除されます）`)) return;
       (f.symbols || []).forEach((s) => delete WatchlistUI.watchCache[s]);
       WatchlistStore.deleteFolder(folderId);
-      WatchlistUI.renderFolders(false);
+      WatchlistUI.render(false);
       global.updateWatchlistBadge?.();
-      global.showToast?.('フォルダを削除しました');
+      global.showToast?.('カテゴリを削除しました');
     },
 
     openSymbolModal(folderId) {
       const modal = document.getElementById('watchModal');
-      const select = document.getElementById('watchFolderSelect');
       const input = document.getElementById('watchInput');
-      if (!modal || !select) return;
-      const data = WatchlistStore.load();
-      select.innerHTML = data.folders.map((f) =>
-        `<option value="${WatchlistUI.esc(f.id)}" ${f.id === folderId ? 'selected' : ''}>${WatchlistUI.esc(f.name)}</option>`
-      ).join('');
-      if (!data.folders.length) {
-        global.showToast?.('先にフォルダを作成してください');
+      const hint = document.getElementById('watchModalCategory');
+      if (!modal) return;
+      const id = folderId || WatchlistUI.getActiveFolderId();
+      const folders = WatchlistStore.getFolders();
+      if (!folders.length) {
+        global.showToast?.('先にカテゴリを作成してください');
         WatchlistUI.openFolderModal();
         return;
       }
-      modal.dataset.prefFolder = folderId || '';
+      const f = WatchlistStore.getFolder(id) || folders[WatchlistUI.activeIndex];
+      modal.dataset.prefFolder = f?.id || '';
+      if (hint && f) hint.textContent = `追加先: ${f.name}`;
       input.value = '';
       modal.style.display = 'flex';
-      input.focus();
+      input?.focus();
     },
 
     closeSymbolModal() {
@@ -589,12 +595,12 @@
     },
 
     addSymbolFromModal() {
-      const select = document.getElementById('watchFolderSelect');
+      const modal = document.getElementById('watchModal');
       const input = document.getElementById('watchInput');
-      const folderId = select?.value;
+      const folderId = modal?.dataset.prefFolder || WatchlistUI.getActiveFolderId();
       const val = input?.value.trim();
       if (!folderId) {
-        global.showToast?.('フォルダを選択してください');
+        global.showToast?.('カテゴリがありません');
         return;
       }
       if (!/^\d{4}$/.test(val)) {
@@ -606,15 +612,19 @@
         return;
       }
       WatchlistUI.closeSymbolModal();
-      const f = WatchlistStore.getFolder(folderId);
-      if (f) WatchlistStore.toggleCollapsed(folderId, false);
-      WatchlistUI.renderFolders(false);
+      WatchlistUI.refreshPanelBody(folderId);
       global.updateWatchlistBadge?.();
       global.showToast?.(`${val} を追加しました`);
+      WatchlistUI.loadWatchItem(val);
     },
 
     esc(str) {
       return global.escapeHtml ? global.escapeHtml(str) : String(str ?? '');
+    },
+
+    // 後方互換
+    renderFolders(silent) {
+      return WatchlistUI.render(silent);
     },
   };
 

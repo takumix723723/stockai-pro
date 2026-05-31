@@ -150,8 +150,8 @@
   <!-- フォルダ作成・名前変更モーダル -->
   <div class="modal-overlay" id="folderModal" style="display: none;">
     <div class="modal-box">
-      <div class="modal-title" id="folderModalTitle">フォルダを作成</div>
-      <input type="text" id="folderNameInput" placeholder="例: 半導体 / 商社 / 監視中" maxlength="30" class="modal-input">
+      <div class="modal-title" id="folderModalTitle">カテゴリを作成</div>
+      <input type="text" id="folderNameInput" placeholder="例: 半導体 / 防衛 / 商社 / AI" maxlength="30" class="modal-input">
       <div class="modal-btns">
         <button type="button" class="modal-cancel" id="folderModalCancel">キャンセル</button>
         <button type="button" class="modal-ok" id="folderModalOk">保存</button>
@@ -163,8 +163,7 @@
   <div class="modal-overlay" id="watchModal" style="display: none;">
     <div class="modal-box">
       <div class="modal-title">銘柄を追加</div>
-      <label class="modal-label" for="watchFolderSelect">フォルダ</label>
-      <select id="watchFolderSelect" class="modal-select"></select>
+      <p class="modal-category-hint" id="watchModalCategory">追加先: —</p>
       <label class="modal-label" for="watchInput">銘柄コード</label>
       <input type="text" id="watchInput" placeholder="4桁コード（例: 7203）" maxlength="4" inputmode="numeric" class="modal-input">
       <div class="modal-btns">
@@ -363,12 +362,13 @@
         '<div class="watch-page-header section-header">' +
         '<div class="section-title">📋 登録銘柄</div>' +
         '<div class="wf-header-actions">' +
-        '<button type="button" class="add-watch-btn" id="addFolderBtn">＋ フォルダ</button>' +
+        '<button type="button" class="add-watch-btn" id="addFolderBtn">＋ カテゴリ</button>' +
         '<button type="button" class="add-watch-btn" id="addWatchBtnTab">＋ 銘柄</button>' +
         '</div></div>' +
-        '<p class="watch-page-desc">テーマ別・目的別にフォルダで整理（SBI登録銘柄風）</p>' +
-        '<div class="watch-folder-list" id="watchFolderList">' +
-        '<div class="skeleton-list">' + skeletonCards(2) + '</div></div>';
+        '<div class="wl-swipe-root" id="watchSwipeRoot">' +
+        '<div class="wl-tab-bar" id="watchTabBar" role="tablist" aria-label="登録カテゴリ"></div>' +
+        '<div class="wl-carousel" id="watchCarousel"></div>' +
+        '</div>';
 
       area.appendChild(tab);
 
