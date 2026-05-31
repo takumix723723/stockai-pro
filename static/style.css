@@ -1552,10 +1552,10 @@ body.sub-panel-open .main-tabs {
   font-weight: 600;
 }
 
-/* 3ボタンナビ（中央＝登録銘柄） */
+/* 3ボタンナビ — 全タブ同一サイズ（SBI/iOSタブバー風） */
 .bottom-nav-triple {
-  padding: 4px 6px;
-  align-items: flex-end;
+  padding: 4px 2px;
+  align-items: stretch;
 }
 
 .bottom-nav-triple .bn-item {
@@ -1564,39 +1564,26 @@ body.sub-panel-open .main-tabs {
 
 .bottom-nav-triple .bn-item-center {
   position: relative;
-  flex: 1.1;
-  margin-top: -10px;
-  min-height: 56px;
-  padding: 8px 6px 10px;
-  border-radius: 14px;
-  background: linear-gradient(165deg, #3b82f6 0%, #2563eb 100%);
-  color: #fff;
-  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-}
-
-.bottom-nav-triple .bn-item-center .bn-icon {
-  font-size: 1.5rem;
-}
-
-.bottom-nav-triple .bn-item-center .bn-label {
-  font-weight: 700;
-  color: #fff;
-}
-
-.bottom-nav-triple .bn-item-center:active {
-  background: linear-gradient(165deg, #2563eb 0%, #1d4ed8 100%);
 }
 
 .bottom-nav-triple .bn-item-center.active {
-  color: #fff;
-  box-shadow: 0 4px 20px rgba(37, 99, 235, 0.55);
+  color: var(--accent);
+}
+
+.bottom-nav-triple .bn-item-center .bn-icon {
+  font-size: 1.35rem;
+}
+
+.bottom-nav-triple .bn-item-center .bn-label {
+  font-weight: 600;
+  color: inherit;
 }
 
 .bn-badge {
   position: absolute;
-  top: 2px;
-  right: calc(50% - 28px);
+  top: 4px;
+  right: 50%;
+  transform: translateX(14px);
   min-width: 18px;
   height: 18px;
   padding: 0 5px;
@@ -2443,9 +2430,10 @@ body.stock-page {
 }
 
 .chart-error {
-  color: var(--down);
-  padding: 16px;
+  color: var(--text-muted);
+  padding: 8px;
   text-align: center;
+  font-size: 0.75rem;
 }
 
 /* ===== UI polish (SBI / TradingView風) ===== */
@@ -2854,10 +2842,19 @@ body.stock-page {
   font-size: 0.85rem;
 }
 
+.conn-retry-hint {
+  display: inline-block;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  padding: 6px 0;
+  opacity: 0.85;
+}
+
 .load-fail {
-  padding: 20px;
+  padding: 12px 8px;
   text-align: center;
   color: var(--text-muted);
+  font-size: 0.78rem;
 }
 
 /* Search UX */

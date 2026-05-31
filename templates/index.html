@@ -545,20 +545,24 @@
           </span>
         `).join('') + (meta ? `<span class="mt-updated">${escapeHtml(meta)}</span>` : '');
         if (!silent) setLiveSyncStatus('liveSyncStatus', formatLiveTime());
+        resetAutoRetry('marketIndices');
+        return true;
       } catch (e) {
         console.error(e);
         if (!silent) {
-          ticker.innerHTML = '<span class="mt-loading">指数取得失敗 <button type="button" class="retry-btn" onclick="loadMarketIndices()">再試行</button></span>';
+          scheduleAutoRetry('marketIndices', () => loadMarketIndices(), { containerEl: ticker });
         }
+        return false;
       }
     }
     window.loadMarketIndices = loadMarketIndices;
 
     async function loadHomeContent(opts = {}) {
       const silent = !!opts.silent;
+      const isRetry = !!opts.isRetry;
       const themesEl = document.getElementById('marketThemes');
       const aiCard = document.getElementById('aiSummaryCard');
-      if (!silent) {
+      if (!silent && !isRetry) {
         themesEl.innerHTML = `<div class="skeleton-list">${skeletonCards(3)}</div>`;
         aiCard.innerHTML = '<div class="skeleton-block skeleton-lg"></div><div class="skeleton-line"></div><div class="skeleton-line skeleton-sm"></div>';
       }
@@ -598,28 +602,25 @@
           </div>
           <div class="ai-summary-text">${escapeHtml(data.summary)}</div>
         `;
+        resetAutoRetry('homeContent');
+        return true;
       } catch (e) {
         console.error(e);
         if (!silent) {
-          themesEl.innerHTML = '<div class="load-fail">読み込み失敗 <button type="button" class="retry-btn" onclick="retryHomeContent()">再試行</button></div>';
+          scheduleAutoRetry('homeContent', () => loadHomeContent({ isRetry: true }), { containerEl: themesEl });
         }
+        return false;
       }
     }
 
-    function retryHomeContent() {
-      tabLoaded.home = false;
-      tabLoading.home = false;
-      ensureTabData('home');
-    }
-    window.retryHomeContent = retryHomeContent;
-
-    async function loadMarketAi() {
+    async function loadMarketAi(opts = {}) {
+      const isRetry = !!opts.isRetry;
       const el = document.getElementById('marketAiContent');
-      el.innerHTML = `<div class="skeleton-list">${skeletonCards(4)}</div>`;
+      if (!isRetry) el.innerHTML = `<div class="skeleton-list">${skeletonCards(4)}</div>`;
       try {
         const res = await fetch('/api/market_summary');
         const data = await res.json();
-        if (data.status !== 'ok') return;
+        if (data.status !== 'ok') throw new Error('failed');
 
         el.innerHTML = `
           <div class="market-ai-meta">${escapeHtml(updatedLabel(data))}</div>
@@ -649,22 +650,14 @@
             `).join('')}
           </div>
         `;
+        resetAutoRetry('marketAi');
+        return true;
       } catch (e) {
         console.error(e);
-        el.innerHTML = '<div class="load-fail">読み込み失敗 <button type="button" class="retry-btn" onclick="retryMarketAi()">再試行</button></div>';
+        scheduleAutoRetry('marketAi', () => loadMarketAi({ isRetry: true }), { containerEl: el });
+        return false;
       }
     }
-
-    function retryMarketAi() {
-      if (activeSubPanel === 'market') {
-        panelLoaded.market = false;
-        panelLoading.market = false;
-        const el = document.getElementById('marketAiContent');
-        if (el) el.innerHTML = `<div class="skeleton-list">${skeletonCards(4)}</div>`;
-        loadSubPanelData('market');
-      }
-    }
-    window.retryMarketAi = retryMarketAi;
 
     async function loadNotifications(opts = {}) {
       const silent = !!opts.silent;
@@ -703,10 +696,11 @@
 
     async function loadRanking(opts = {}) {
       const silent = !!opts.silent;
+      const isRetry = !!opts.isRetry;
       const gainersEl = document.getElementById('gainersList');
       const losersEl = document.getElementById('losersList');
       if (!gainersEl) return;
-      if (!silent) {
+      if (!silent && !isRetry) {
         gainersEl.innerHTML = `<div class="skeleton-list">${skeletonRankList()}</div>`;
         losersEl.innerHTML = '';
       }
@@ -749,29 +743,26 @@
         document.querySelectorAll('.rank-card').forEach((card) => {
           card.addEventListener('click', () => goToStock(card.dataset.symbol));
         });
+        resetAutoRetry('ranking');
+        return true;
       } catch (e) {
+        console.error(e);
         if (!silent) {
-          gainersEl.innerHTML = '<div class="load-fail">読み込み失敗 <button type="button" class="retry-btn" onclick="retryRanking()">再試行</button></div>';
-          losersEl.innerHTML = '';
+          scheduleAutoRetry('ranking', () => loadRanking({ isRetry: true }), { containerEl: gainersEl });
         }
+        return false;
       }
     }
-
-    function retryRanking() {
-      tabLoaded.ranking = false;
-      tabLoading.ranking = false;
-      ensureTabData('ranking');
-    }
-    window.retryRanking = retryRanking;
     window.loadRanking = loadRanking;
 
-    async function loadBuried() {
+    async function loadBuried(opts = {}) {
+      const isRetry = !!opts.isRetry;
       const list = document.getElementById('buriedList');
-      list.innerHTML = `<div class="skeleton-list">${skeletonCards(4)}</div>`;
+      if (!isRetry) list.innerHTML = `<div class="skeleton-list">${skeletonCards(4)}</div>`;
       try {
         const res = await fetch('/api/buried');
         const data = await res.json();
-        if (data.status !== 'ok') return;
+        if (data.status !== 'ok') throw new Error('failed');
 
         list.innerHTML = data.stocks.map((s) => `
           <div class="buried-card" data-symbol="${escapeHtml(s.symbol)}">
@@ -798,30 +789,23 @@
         list.querySelectorAll('.buried-card').forEach((card) => {
           card.addEventListener('click', () => goToStock(card.dataset.symbol));
         });
+        resetAutoRetry('buried');
+        return true;
       } catch (e) {
         console.error(e);
-        list.innerHTML = '<div class="load-fail">読み込み失敗 <button type="button" class="retry-btn" onclick="retryBuried()">再試行</button></div>';
+        scheduleAutoRetry('buried', () => loadBuried({ isRetry: true }), { containerEl: list });
+        return false;
       }
     }
 
-    function retryBuried() {
-      if (activeSubPanel === 'buried') {
-        panelLoaded.buried = false;
-        panelLoading.buried = false;
-        const el = document.getElementById('buriedList');
-        if (el) el.innerHTML = `<div class="skeleton-list">${skeletonCards(4)}</div>`;
-        loadSubPanelData('buried');
-      }
-    }
-    window.retryBuried = retryBuried;
-
-    async function loadFund() {
+    async function loadFund(opts = {}) {
+      const isRetry = !!opts.isRetry;
       const list = document.getElementById('fundList');
-      list.innerHTML = `<div class="skeleton-list">${skeletonCards(3)}</div>`;
+      if (!isRetry) list.innerHTML = `<div class="skeleton-list">${skeletonCards(3)}</div>`;
       try {
         const res = await fetch('/api/fund_screener');
         const data = await res.json();
-        if (data.status !== 'ok') return;
+        if (data.status !== 'ok') throw new Error('failed');
 
         const meta = updatedLabel(data);
         list.innerHTML = (meta ? `<div class="fund-meta">${escapeHtml(meta)}</div>` : '') + data.stocks.map((s) => `
@@ -847,22 +831,14 @@
         list.querySelectorAll('.fund-card').forEach((card) => {
           card.addEventListener('click', () => goToStock(card.dataset.symbol));
         });
+        resetAutoRetry('fund');
+        return true;
       } catch (e) {
         console.error(e);
-        list.innerHTML = '<div class="load-fail">読み込み失敗 <button type="button" class="retry-btn" onclick="retryFund()">再試行</button></div>';
+        scheduleAutoRetry('fund', () => loadFund({ isRetry: true }), { containerEl: list });
+        return false;
       }
     }
-
-    function retryFund() {
-      if (activeSubPanel === 'fund') {
-        panelLoaded.fund = false;
-        panelLoading.fund = false;
-        const el = document.getElementById('fundList');
-        if (el) el.innerHTML = `<div class="skeleton-list">${skeletonCards(3)}</div>`;
-        loadSubPanelData('fund');
-      }
-    }
-    window.retryFund = retryFund;
 
     function toggleNotifPanel() {
       const panel = document.getElementById('notifPanel');

@@ -80,6 +80,59 @@ async function fetchSilent(url, options) {
   return fetch(url, options);
 }
 
+const _autoRetryState = {};
+
+function resetAutoRetry(key) {
+  const s = _autoRetryState[key];
+  if (s?.timer) clearTimeout(s.timer);
+  delete _autoRetryState[key];
+}
+
+function getRetryDelay(attempt) {
+  return Math.min(2000 * 2 ** attempt, 8000);
+}
+
+function showConnRetryHint(containerEl, message) {
+  if (!containerEl) return;
+  containerEl.innerHTML = `<span class="conn-retry-hint">${escapeHtml(message || '接続再試行中…')}</span>`;
+}
+
+/**
+ * 通信失敗時の指数バックオフ自動再試行（2s → 4s → 8s）
+ * @param {string} key
+ * @param {() => Promise<boolean>} task
+ * @param {{ containerEl?: Element, silent?: boolean }} opts
+ */
+function scheduleAutoRetry(key, task, opts = {}) {
+  if (document.hidden) return;
+
+  if (!_autoRetryState[key]) {
+    _autoRetryState[key] = { attempt: 0, timer: null };
+  }
+  const state = _autoRetryState[key];
+  if (state.timer) return;
+
+  const delay = getRetryDelay(state.attempt);
+  if (!opts.silent && opts.containerEl) {
+    showConnRetryHint(opts.containerEl);
+  }
+
+  state.timer = setTimeout(async () => {
+    state.timer = null;
+    state.attempt += 1;
+    try {
+      const ok = await task();
+      if (ok) {
+        resetAutoRetry(key);
+      } else {
+        scheduleAutoRetry(key, task, opts);
+      }
+    } catch {
+      scheduleAutoRetry(key, task, opts);
+    }
+  }, delay);
+}
+
 function formatLiveTime(date = new Date()) {
   const h = date.getHours();
   const m = String(date.getMinutes()).padStart(2, '0');

@@ -67,9 +67,7 @@
       </div>
       <div id="chartContainer" class="stock-chart-container"></div>
       <div class="chart-loading" id="chartLoading">チャート読み込み中...</div>
-      <div class="chart-error" id="chartError" style="display: none;">
-        <button type="button" class="retry-btn" data-retry="chart">再試行</button>
-      </div>
+      <div class="chart-error" id="chartError" style="display: none;"></div>
     </section>
 
     <nav class="stock-subtabs" id="stockSubtabs">
@@ -185,8 +183,6 @@
       document.querySelectorAll('.stock-subtab').forEach((btn) => {
         btn.addEventListener('click', () => switchStockSubtab(btn.dataset.subtab));
       });
-
-      document.querySelector('[data-retry="chart"]')?.addEventListener('click', () => loadChart(currentPeriod));
 
       loadStock();
       loadChart(currentPeriod);
@@ -349,14 +345,16 @@
       `;
     }
 
-    async function loadHoldings() {
+    async function loadHoldings(opts = {}) {
+      const isRetry = !!opts.isRetry;
       const panel = document.getElementById('holdingsPanel');
       try {
-        const res = await fetchWithProgress(`/api/holdings?symbol=${encodeURIComponent(SYMBOL)}`);
+        const res = isRetry ? await fetchSilent(`/api/holdings?symbol=${encodeURIComponent(SYMBOL)}`) : await fetchWithProgress(`/api/holdings?symbol=${encodeURIComponent(SYMBOL)}`);
         const json = await res.json();
         if (!json.has_data || !json.items?.length) {
           panel.innerHTML = '<div class="news-empty">現在データなし</div>';
-          return;
+          resetAutoRetry('holdings');
+          return true;
         }
         panel.innerHTML = json.items.map((h) => `
           <div class="holding-row">
@@ -371,20 +369,25 @@
             </div>
           </div>
         `).join('');
+        resetAutoRetry('holdings');
+        return true;
       } catch (e) {
-        panel.innerHTML = '<div class="load-fail">読み込み失敗 <button type="button" class="retry-btn" onclick="loadHoldings()">再試行</button></div>';
+        scheduleAutoRetry('holdings', () => loadHoldings({ isRetry: true }), { containerEl: panel });
+        return false;
       }
     }
 
-    async function loadSector() {
+    async function loadSector(opts = {}) {
+      const isRetry = !!opts.isRetry;
       const panel = document.getElementById('sectorPanel');
       try {
-        const res = await fetchWithProgress(`/api/sector?symbol=${encodeURIComponent(SYMBOL)}`);
+        const res = isRetry ? await fetchSilent(`/api/sector?symbol=${encodeURIComponent(SYMBOL)}`) : await fetchWithProgress(`/api/sector?symbol=${encodeURIComponent(SYMBOL)}`);
         const json = await res.json();
         const s = json.sector;
         if (!s) {
           panel.innerHTML = '<div class="news-empty">現在データなし</div>';
-          return;
+          resetAutoRetry('sector');
+          return true;
         }
         panel.innerHTML = `
           <div class="sector-grid">
@@ -396,8 +399,11 @@
             <div class="sector-item"><span class="sector-k">PBR位置</span><span class="sector-v highlight">${escapeHtml(s.pbr_position)}</span></div>
           </div>
         `;
+        resetAutoRetry('sector');
+        return true;
       } catch (e) {
-        panel.innerHTML = '<div class="load-fail">読み込み失敗 <button type="button" class="retry-btn" onclick="loadSector()">再試行</button></div>';
+        scheduleAutoRetry('sector', () => loadSector({ isRetry: true }), { containerEl: panel });
+        return false;
       }
     }
 
@@ -484,36 +490,38 @@
 
     async function loadStock(opts = {}) {
       const silent = !!opts.silent;
+      const isRetry = !!opts.isRetry;
       const card = document.getElementById('priceCard');
       try {
-        const res = silent
+        const res = silent || isRetry
           ? await fetchSilent(`/api/stock?symbol=${encodeURIComponent(SYMBOL)}`)
           : await fetchWithProgress(`/api/stock?symbol=${encodeURIComponent(SYMBOL)}`);
         const json = await res.json();
         if (json.status !== 'ok' || !json.data) {
           if (!silent) {
-            card.innerHTML = `<div class="stock-error">${escapeHtml(json.message || '株価データを取得できませんでした')}</div>`;
+            scheduleAutoRetry('stock', () => loadStock({ isRetry: true }), { containerEl: card });
           }
-          return;
+          return false;
         }
         applyStockData(json.data, opts);
+        resetAutoRetry('stock');
+        return true;
       } catch (e) {
         console.error(e);
         if (!silent) {
-          card.innerHTML = '<div class="stock-error">通信エラー <button type="button" class="retry-btn" onclick="loadStock()">再試行</button></div>';
+          scheduleAutoRetry('stock', () => loadStock({ isRetry: true }), { containerEl: card });
         }
+        return false;
       }
     }
 
-    async function loadAiCard() {
+    async function loadAiCard(opts = {}) {
+      const isRetry = !!opts.isRetry;
       const panel = document.getElementById('aiCardPanel');
       try {
-        const res = await fetchWithProgress(`/api/ai_card?symbol=${encodeURIComponent(SYMBOL)}`);
+        const res = isRetry ? await fetchSilent(`/api/ai_card?symbol=${encodeURIComponent(SYMBOL)}`) : await fetchWithProgress(`/api/ai_card?symbol=${encodeURIComponent(SYMBOL)}`);
         const json = await res.json();
-        if (json.status !== 'ok' || !json.ai_card) {
-          panel.innerHTML = '<div class="stock-error">AI分析を取得できませんでした</div>';
-          return;
-        }
+        if (json.status !== 'ok' || !json.ai_card) throw new Error('failed');
         const c = json.ai_card;
         const band = c.band || scoreBandClass(c.total);
         const items = [
@@ -545,8 +553,11 @@
           </div>
           <p class="ai-card-comment">${escapeHtml(c.comment || '')}</p>
         `;
+        resetAutoRetry('aiCard');
+        return true;
       } catch (e) {
-        panel.innerHTML = '<div class="stock-error">AI分析失敗 <button type="button" class="retry-btn" onclick="loadAiCard()">再試行</button></div>';
+        scheduleAutoRetry('aiCard', () => loadAiCard({ isRetry: true }), { containerEl: panel });
+        return false;
       }
     }
 
@@ -574,10 +585,11 @@
 
     async function loadSupply(opts = {}) {
       const silent = !!opts.silent;
+      const isRetry = !!opts.isRetry;
       const panel = document.getElementById('supplyPanel');
-      if (!panel) return;
-      if (silent && !subpanelLoaded.supply && activeStockSubtab !== 'supply') return;
-      if (!silent) panel.innerHTML = '<div class="skeleton-block"></div>';
+      if (!panel) return false;
+      if (silent && !subpanelLoaded.supply && activeStockSubtab !== 'supply') return false;
+      if (!silent && !isRetry) panel.innerHTML = '<div class="skeleton-block"></div>';
       try {
         const res = silent
           ? await fetchSilent(`/api/supply?symbol=${encodeURIComponent(SYMBOL)}`)
@@ -586,10 +598,13 @@
         if (json.status !== 'ok' || !json.credit) throw new Error('failed');
         subpanelLoaded.supply = true;
         renderSupplyPanel(json.credit, panel);
+        resetAutoRetry('supply');
+        return true;
       } catch (e) {
         if (!silent) {
-          panel.innerHTML = '<div class="load-fail">読み込み失敗 <button type="button" class="retry-btn" onclick="loadSupply()">再試行</button></div>';
+          scheduleAutoRetry('supply', () => loadSupply({ silent: false, isRetry: true }), { containerEl: panel });
         }
+        return false;
       }
     }
     window.loadSupply = loadSupply;
@@ -629,10 +644,11 @@
 
     async function loadOrderbook(opts = {}) {
       const silent = !!opts.silent;
+      const isRetry = !!opts.isRetry;
       const panel = document.getElementById('orderbookPanel');
-      if (!panel) return;
-      if (silent && !subpanelLoaded.orderbook && activeStockSubtab !== 'orderbook') return;
-      if (!silent) panel.innerHTML = '<div class="skeleton-block"></div>';
+      if (!panel) return false;
+      if (silent && !subpanelLoaded.orderbook && activeStockSubtab !== 'orderbook') return false;
+      if (!silent && !isRetry) panel.innerHTML = '<div class="skeleton-block"></div>';
       try {
         const res = silent
           ? await fetchSilent(`/api/orderbook?symbol=${encodeURIComponent(SYMBOL)}`)
@@ -641,22 +657,27 @@
         if (json.status !== 'ok' || !json.orderbook) throw new Error('failed');
         subpanelLoaded.orderbook = true;
         renderOrderbookPanel(json.orderbook, panel);
+        resetAutoRetry('orderbook');
+        return true;
       } catch (e) {
         if (!silent) {
-          panel.innerHTML = '<div class="load-fail">読み込み失敗 <button type="button" class="retry-btn" onclick="loadOrderbook()">再試行</button></div>';
+          scheduleAutoRetry('orderbook', () => loadOrderbook({ silent: false, isRetry: true }), { containerEl: panel });
         }
+        return false;
       }
     }
     window.loadOrderbook = loadOrderbook;
 
-    async function loadNews() {
+    async function loadNews(opts = {}) {
+      const isRetry = !!opts.isRetry;
       const list = document.getElementById('newsList');
       try {
-        const res = await fetchWithProgress(`/api/news?symbol=${encodeURIComponent(SYMBOL)}`);
+        const res = isRetry ? await fetchSilent(`/api/news?symbol=${encodeURIComponent(SYMBOL)}`) : await fetchWithProgress(`/api/news?symbol=${encodeURIComponent(SYMBOL)}`);
         const json = await res.json();
         if (json.status !== 'ok' || !json.news || json.news.length === 0) {
           list.innerHTML = '<div class="news-empty">ニュースがありません</div>';
-          return;
+          resetAutoRetry('news');
+          return true;
         }
         list.innerHTML = json.news.map((n) => `
           <a class="news-item" href="${escapeHtml(n.url)}" target="_blank" rel="noopener noreferrer">
@@ -664,9 +685,12 @@
             <div class="news-date">${escapeHtml(n.date)}</div>
           </a>
         `).join('');
+        resetAutoRetry('news');
+        return true;
       } catch (e) {
         console.error(e);
-        list.innerHTML = '<div class="load-fail">読み込み失敗 <button type="button" class="retry-btn" onclick="loadNews()">再試行</button></div>';
+        scheduleAutoRetry('news', () => loadNews({ isRetry: true }), { containerEl: list });
+        return false;
       }
     }
 
@@ -793,10 +817,11 @@
 
     async function loadChart(period, opts = {}) {
       const silent = !!opts.silent;
+      const isRetry = !!opts.isRetry;
       const loading = document.getElementById('chartLoading');
       const errEl = document.getElementById('chartError');
       document.getElementById('techPeriodBadge').textContent = PERIOD_LABELS[period] || period;
-      if (!silent) {
+      if (!silent && !isRetry) {
         loading.style.display = 'block';
         errEl.style.display = 'none';
       }
@@ -810,10 +835,11 @@
           if (!silent) {
             loading.style.display = 'none';
             errEl.style.display = 'block';
-            errEl.innerHTML = `<span>${escapeHtml(json.message || 'チャートデータがありません')}</span>`;
+            showConnRetryHint(errEl);
             destroyChart();
+            scheduleAutoRetry('chart', () => loadChart(period, { isRetry: true }), { containerEl: errEl });
           }
-          return;
+          return false;
         }
 
         if (silent && chartInstance && candleSeries && period === currentPeriod) {
@@ -822,7 +848,7 @@
           lastChartJson = { ...json, period };
           applyChartLayers();
           renderTechnical(json.technical, { silent: true });
-          return;
+          return true;
         }
 
         loading.style.display = 'none';
@@ -856,13 +882,17 @@
           scaleMargins: { top: 0.06, bottom: 0.06 },
         });
         chartInstance.timeScale().fitContent();
+        errEl.style.display = 'none';
+        resetAutoRetry('chart');
+        return true;
       } catch (e) {
         console.error(e);
         if (!silent) {
           loading.style.display = 'none';
           errEl.style.display = 'block';
-          errEl.innerHTML = '<span>チャートの読み込みに失敗しました</span>';
+          scheduleAutoRetry('chart', () => loadChart(period, { isRetry: true }), { containerEl: errEl });
         }
+        return false;
       }
     }
   </script>
