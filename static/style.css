@@ -1587,7 +1587,7 @@ body.sub-panel-open .main-tabs {
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--border);
   border-radius: 16px;
-  z-index: 200;
+  z-index: 350;
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
   padding: 4px 2px;
 }
@@ -3363,6 +3363,14 @@ body.stock-page {
 /* ── IPO / PO（SBI風） ── */
 .ipo-page {
   background: var(--bg);
+}
+
+.ipo-page-embed {
+  background: transparent;
+}
+
+.ipo-page-embed .ipo-main {
+  padding-top: 0;
 }
 
 .ipo-app-header .header-inner {

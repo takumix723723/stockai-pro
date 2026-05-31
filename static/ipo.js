@@ -50,10 +50,18 @@ const IpoPage = {
   poFilter: 'all',
   activeTab: 'ipo',
   lastMeta: null,
+  _inited: false,
 
   init() {
+    if (!document.getElementById('ipoList')) return;
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme) document.documentElement.setAttribute('data-theme', savedTheme);
+
+    if (this._inited) {
+      this.loadIpoList();
+      this.loadPoList();
+      return;
+    }
 
     const typeSelect = document.getElementById('ipoTypeSelect');
     typeSelect?.addEventListener('change', () => {
@@ -75,8 +83,16 @@ const IpoPage = {
       });
     });
 
+    this._inited = true;
     this.loadIpoList();
     this.loadPoList();
+  },
+
+  destroy() {
+    this._inited = false;
+    this.activeTab = 'ipo';
+    this.ipoFilter = 'all';
+    this.poFilter = 'all';
   },
 
   switchTab(name) {

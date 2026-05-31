@@ -1,5 +1,5 @@
 /* StockAI Pro Service Worker v4 — 軽量・ネットワーク優先 */
-const CACHE_VERSION = 'stockai-pro-v19';
+const CACHE_VERSION = 'stockai-pro-v20';
 const STATIC_CACHE = `${CACHE_VERSION}-core`;
 
 const PRECACHE = [
@@ -53,6 +53,16 @@ function isPrecachedPath(pathname) {
   return PRECACHE.some((p) => p === pathname || p === pathname.replace(/\/$/, ''));
 }
 
+function isAppRoute(pathname) {
+  return (
+    pathname === '/' ||
+    pathname === '/offline' ||
+    pathname === '/ipo' ||
+    pathname.startsWith('/ipo/') ||
+    pathname.startsWith('/stock/')
+  );
+}
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;
@@ -65,7 +75,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (request.mode === 'navigate' || url.pathname === '/' || url.pathname.startsWith('/stock/')) {
+  if (request.mode === 'navigate' || isAppRoute(url.pathname)) {
     event.respondWith(
       fetch(request).catch(() => caches.match(request).then((r) => r || offlineFallback()))
     );

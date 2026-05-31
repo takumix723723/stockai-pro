@@ -92,6 +92,7 @@
     <button type="button" class="tab-btn active" data-tab="home">ホーム</button>
     <button type="button" class="tab-btn" data-tab="watchlist">登録銘柄</button>
     <button type="button" class="tab-btn" data-tab="ranking">急騰・急落</button>
+    <button type="button" class="tab-btn" data-tab="ipo">IPO</button>
   </nav>
 
   <div id="mainTabArea">
@@ -120,7 +121,7 @@
         <span class="home-menu-label">市場AI分析</span>
         <span class="home-menu-desc">指数・テーマ総合</span>
       </button>
-      <a href="/ipo" class="home-menu-card home-menu-link">
+      <a href="#" class="home-menu-card home-menu-link" id="homeIpoMenuLink" data-tab-nav="ipo">
         <span class="home-menu-icon">🆕</span>
         <span class="home-menu-label">IPO・PO</span>
         <span class="home-menu-desc">新規公開・売出</span>
@@ -180,21 +181,22 @@
       <span class="bn-icon">📊</span>
       <span class="bn-label">急騰急落</span>
     </a>
-    <a href="/ipo" class="bn-item">
+    <a href="#" class="bn-item" data-tab-nav="ipo">
       <span class="bn-icon">🆕</span>
       <span class="bn-label">IPO</span>
     </a>
   </nav>
 
   <script src="/static/watchlist.js"></script>
+  <script src="/static/ipo.js"></script>
   <script src="/static/script.js"></script>
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       initIndex();
     });
 
-    const tabLoaded = { home: false, watchlist: false, ranking: false };
-    const tabLoading = { home: false, watchlist: false, ranking: false };
+    const tabLoaded = { home: false, watchlist: false, ranking: false, ipo: false };
+    const tabLoading = { home: false, watchlist: false, ranking: false, ipo: false };
     const panelLoaded = { buried: false, fund: false, market: false };
     const panelLoading = { buried: false, fund: false, market: false };
     let notifLoaded = false;
@@ -299,6 +301,11 @@
         card.addEventListener('click', () => openSubPanel(card.dataset.panel));
       });
 
+      document.getElementById('homeIpoMenuLink')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        switchTab('ipo');
+      });
+
       document.getElementById('notifToggle').addEventListener('click', toggleNotifPanel);
       document.getElementById('notifClose').addEventListener('click', closeNotifPanel);
       document.getElementById('notifOverlay').addEventListener('click', closeNotifPanel);
@@ -314,7 +321,7 @@
       initIndexAutoRefresh();
 
       const urlTab = new URLSearchParams(window.location.search).get('tab');
-      if (urlTab && ['watchlist', 'ranking'].includes(urlTab)) {
+      if (urlTab && ['watchlist', 'ranking', 'ipo'].includes(urlTab)) {
         switchTab(urlTab);
       } else {
         syncHomeOnlyChrome('home');
@@ -349,6 +356,8 @@
         tasks.push(loadRanking({ silent: true }));
       } else if (currentMainTab === 'watchlist' && tabLoaded.watchlist) {
         tasks.push(WatchlistUI.refresh({ silent: true }));
+      } else if (currentMainTab === 'ipo' && tabLoaded.ipo) {
+        tasks.push(loadIpoContent({ silent: true }));
       }
 
       tasks.push(loadNotifications({ silent: true }));
@@ -381,6 +390,8 @@
         loadWatchlistContent().finally(done);
       } else if (name === 'ranking') {
         loadRanking().finally(done);
+      } else if (name === 'ipo') {
+        loadIpoContent().finally(done);
       } else {
         tabLoading[name] = false;
       }
@@ -443,6 +454,57 @@
       if (tab) tab.remove();
       tabLoaded.ranking = false;
       tabLoading.ranking = false;
+    }
+
+    function ensureIpoTabDom() {
+      if (document.getElementById('tab-ipo')) return;
+      const area = document.getElementById('mainTabArea');
+      const tab = document.createElement('div');
+      tab.className = 'tab-content ipo-page ipo-page-embed';
+      tab.id = 'tab-ipo';
+      tab.innerHTML =
+        '<main class="ipo-main">' +
+        '<div class="ipo-page-head">' +
+        '<div class="ipo-page-head-left">' +
+        '<h1 class="ipo-page-title" id="ipoPageTitle">IPO・PO</h1>' +
+        '<p class="ipo-page-meta" id="ipoPageMeta">読み込み中…</p>' +
+        '</div>' +
+        '<div class="ipo-page-head-right">' +
+        '<label class="sr-only" for="ipoTypeSelect">表示切替</label>' +
+        '<select id="ipoTypeSelect" class="ipo-type-select" aria-label="IPO / PO 切替">' +
+        '<option value="ipo">IPO</option><option value="po">PO</option>' +
+        '</select></div></div>' +
+        '<div class="ipo-segment" id="ipoSegment" role="tablist" aria-label="絞り込み">' +
+        '<button type="button" class="ipo-segment-btn active" data-filter="all" role="tab" aria-selected="true">すべて</button>' +
+        '<button type="button" class="ipo-segment-btn" data-filter="open" role="tab" aria-selected="false" id="ipoSegmentOpen">募集中</button>' +
+        '<button type="button" class="ipo-segment-btn" data-filter="closed" role="tab" aria-selected="false">終了</button>' +
+        '</div>' +
+        '<div class="ipo-panel active" id="ipoPanelIpo">' +
+        '<div class="ipo-list" id="ipoList"><div class="skeleton-list"><div class="skeleton-card-row"></div><div class="skeleton-card-row"></div></div></div>' +
+        '</div>' +
+        '<div class="ipo-panel" id="ipoPanelPo" hidden>' +
+        '<div class="ipo-list" id="poList"><div class="skeleton-list"><div class="skeleton-card-row"></div></div></div>' +
+        '</div>' +
+        '<p class="ipo-disclaimer">※ 参考データです。投資判断は公式情報をご確認ください。</p>' +
+        '</main>';
+      area.appendChild(tab);
+    }
+
+    function destroyIpoTab() {
+      const tab = document.getElementById('tab-ipo');
+      if (tab) tab.remove();
+      if (window.IpoPage?.destroy) IpoPage.destroy();
+      tabLoaded.ipo = false;
+      tabLoading.ipo = false;
+    }
+
+    function loadIpoContent(opts = {}) {
+      if (!document.getElementById('tab-ipo')) return Promise.resolve();
+      if (!IpoPage._inited) IpoPage.init();
+      return Promise.all([
+        IpoPage.loadIpoList(opts),
+        IpoPage.loadPoList(opts),
+      ]);
     }
 
     function openSubPanel(name) {
@@ -526,7 +588,7 @@
     window.goToStock = goToStock;
 
     function switchTab(name, opts) {
-      if (name !== 'home' && name !== 'watchlist' && name !== 'ranking') return;
+      if (name !== 'home' && name !== 'watchlist' && name !== 'ranking' && name !== 'ipo') return;
 
       if (!opts?.fromSubPanel) {
         closeSubPanel(false);
@@ -538,12 +600,18 @@
       if (currentMainTab === 'watchlist' && name !== 'watchlist') {
         destroyWatchlistTab();
       }
+      if (currentMainTab === 'ipo' && name !== 'ipo') {
+        destroyIpoTab();
+      }
 
       if (name === 'ranking') {
         ensureRankingTabDom();
       }
       if (name === 'watchlist') {
         ensureWatchlistTabDom();
+      }
+      if (name === 'ipo') {
+        ensureIpoTabDom();
       }
 
       currentMainTab = name;
