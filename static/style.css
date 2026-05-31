@@ -3373,6 +3373,25 @@ body.stock-page {
   padding-top: 0;
 }
 
+/* IPOタブ専用 — 検索・ホームヘッダーを非表示（SBI IPO風） */
+body.main-tab-ipo .app-header,
+body.main-tab-ipo .search-section {
+  display: none !important;
+}
+
+body.main-tab-ipo #mainTabArea {
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+body.main-tab-ipo #tab-ipo.tab-content.active {
+  padding: max(10px, env(safe-area-inset-top, 0px)) 14px 24px;
+}
+
+body.main-tab-ipo .ipo-page-embed .ipo-page-head {
+  padding-top: 4px;
+}
+
 .ipo-app-header .header-inner {
   min-height: 44px;
 }

@@ -239,6 +239,8 @@
     }
 
     function syncHomeOnlyChrome(tabName) {
+      document.body.classList.toggle('main-tab-ipo', tabName === 'ipo');
+      document.title = tabName === 'ipo' ? 'IPO・PO - StockAI Pro' : 'StockAI Pro - 日本株分析';
       if (tabName === 'home') {
         mountHomeMarketBar();
       } else {
