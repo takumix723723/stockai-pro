@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0b0f1c">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/static/icons/icon-192.svg">
+  <title>{{ symbol }} - StockAI Pro</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body class="stock-page">
+
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="header-left">
+        <a href="/" class="stock-back" aria-label="ホームへ">←</a>
+        <div class="stock-header-titles">
+          <span class="stock-header-symbol" id="headerSymbol">{{ symbol }}</span>
+          <span class="stock-header-name" id="headerName">読み込み中...</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="global-progress" id="globalProgress" aria-hidden="true"><div class="global-progress-bar"></div></div>
+
+  <main class="stock-main fade-in">
+    <section class="stock-price-card card-premium" id="priceCard">
+      <div class="skeleton-line skeleton-lg"></div>
+      <div class="skeleton-line skeleton-sm"></div>
+    </section>
+
+    <section class="pts-card card-premium" id="ptsCard">
+      <div class="pts-label">🌙 PTS・時間外</div>
+      <div class="pts-body" id="ptsBody">
+        <span class="skeleton-line skeleton-sm"></span>
+      </div>
+    </section>
+
+    <section class="stock-stats" id="stockStats" style="display: none;"></section>
+
+    <div class="chart-period-tabs" id="periodTabs">
+      <button type="button" class="period-btn" data-period="1d">1日</button>
+      <button type="button" class="period-btn" data-period="1w">1週</button>
+      <button type="button" class="period-btn active" data-period="1mo">1月</button>
+      <button type="button" class="period-btn" data-period="3mo">3月</button>
+      <button type="button" class="period-btn" data-period="1y">1年</button>
+    </div>
+
+    <section class="stock-chart-wrap card-premium">
+      <div class="chart-legend">
+        <span class="legend-item"><i class="legend-dot ma5"></i>MA5</span>
+        <span class="legend-item"><i class="legend-dot ma25"></i>MA25</span>
+        <span class="legend-item"><i class="legend-dot ma75"></i>MA75</span>
+      </div>
+      <div id="chartContainer" class="stock-chart-container"></div>
+      <div class="chart-loading" id="chartLoading">チャート読み込み中...</div>
+      <div class="chart-error" id="chartError" style="display: none;">
+        <button type="button" class="retry-btn" data-retry="chart">再試行</button>
+      </div>
+    </section>
+
+    <section class="section-block">
+      <h2 class="section-title">📐 テクニカル分析 <span class="tech-period-badge" id="techPeriodBadge">1月</span></h2>
+      <div class="tech-panel card-premium" id="techPanel">
+        <div class="skeleton-block"></div>
+      </div>
+    </section>
+
+    <section class="section-block">
+      <h2 class="section-title">🏭 セクター比較</h2>
+      <div class="sector-panel card-premium" id="sectorPanel">
+        <div class="skeleton-block"></div>
+      </div>
+    </section>
+
+    <section class="section-block">
+      <h2 class="section-title">🤖 AI分析</h2>
+      <div class="ai-card-panel card-premium" id="aiCardPanel">
+        <div class="skeleton-block"></div>
+      </div>
+    </section>
+
+    <section class="section-block">
+      <h2 class="section-title">🏦 ファンド・大量保有</h2>
+      <div class="holdings-panel card-premium" id="holdingsPanel">
+        <div class="skeleton-block"></div>
+      </div>
+    </section>
+
+    <section class="section-block">
+      <h2 class="section-title">📰 ニュース・材料</h2>
+      <div class="news-list card-premium" id="newsList">
+        <div class="skeleton-block"></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/script.js"></script>
+  <script>
+    const SYMBOL = {{ symbol|tojson }};
+    const MA_COLORS = {
+      ma5: '#2962FF', ma25: '#FDD835', ma75: '#AB47BC',
+      bb_upper: '#90a4ae', bb_lower: '#90a4ae',
+    };
+
+    let chartInstance = null;
+    let candleSeries = null;
+    let lineSeriesList = [];
+    let currentPeriod = '1mo';
+    const PERIOD_LABELS = { '1d': '1日', '1w': '1週', '1mo': '1月', '3mo': '3月', '1y': '1年' };
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const savedTheme = localStorage.getItem('theme');
+      if (savedTheme) document.documentElement.setAttribute('data-theme', savedTheme);
+
+      document.querySelectorAll('.period-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.period-btn').forEach((b) => b.classList.remove('active'));
+          btn.classList.add('active');
+          currentPeriod = btn.dataset.period;
+          loadChart(currentPeriod);
+        });
+      });
+
+      document.querySelector('[data-retry="chart"]')?.addEventListener('click', () => loadChart(currentPeriod));
+
+      loadStock();
+      loadChart(currentPeriod);
+      loadAiCard();
+      loadHoldings();
+      loadSector();
+      loadNews();
+      window.addEventListener('resize', resizeChart);
+    });
+
+    function fmtPrice(n) {
+      if (n == null || Number.isNaN(n)) return '—';
+      return '¥' + Number(n).toLocaleString('ja-JP', { maximumFractionDigits: 2 });
+    }
+
+    function fmtNum(n, digits = 2) {
+      if (n == null || Number.isNaN(n)) return '—';
+      return Number(n).toLocaleString('ja-JP', { maximumFractionDigits: digits });
+    }
+
+    function renderPts(d) {
+      const body = document.getElementById('ptsBody');
+      const price = d.pts_price;
+      const pct = d.pts_change_pct;
+
+      if (price == null) {
+        body.innerHTML = '<span class="pts-na">PTS価格: N/A</span><span class="pts-na">PTS前日比: N/A</span>';
+        return;
+      }
+
+      const up = pct != null ? pct >= 0 : true;
+      const cls = pct != null ? (up ? 'up' : 'down') : 'neutral';
+      body.innerHTML = `
+        <div class="pts-price">${fmtPrice(price)}</div>
+        <div class="pts-chg ${cls}">
+          PTS前日比:
+          ${pct != null ? `${up ? '+' : ''}${pct.toFixed(2)}%` : 'N/A'}
+        </div>
+      `;
+    }
+
+    function renderTechnical(t) {
+      const panel = document.getElementById('techPanel');
+      if (!t || (t.rsi == null && t.macd == null)) {
+        panel.innerHTML = '<div class="news-empty">テクニカルデータがありません</div>';
+        return;
+      }
+      panel.innerHTML = `
+        <div class="tech-grid">
+          <div class="tech-item">
+            <div class="tech-label">RSI(14)</div>
+            <div class="tech-val">${t.rsi ?? '—'}</div>
+            <div class="tech-judge">${escapeHtml(t.rsi_judge)}</div>
+          </div>
+          <div class="tech-item">
+            <div class="tech-label">MACD</div>
+            <div class="tech-val">${t.macd ?? '—'}</div>
+            <div class="tech-judge">${escapeHtml(t.macd_judge)}</div>
+          </div>
+          <div class="tech-item">
+            <div class="tech-label">MACDシグナル</div>
+            <div class="tech-val">${t.macd_signal ?? '—'}</div>
+            <div class="tech-judge">—</div>
+          </div>
+          <div class="tech-item tech-item-wide">
+            <div class="tech-label">ボリンジャーバンド(20)</div>
+            <div class="tech-val bb-row">上 ${t.bb_upper ?? '—'} / 中 ${t.bb_mid ?? '—'} / 下 ${t.bb_lower ?? '—'}</div>
+            <div class="tech-judge">${escapeHtml(t.bb_judge)}</div>
+          </div>
+        </div>
+      `;
+    }
+
+    async function loadHoldings() {
+      const panel = document.getElementById('holdingsPanel');
+      try {
+        const res = await fetchWithProgress(`/api/holdings?symbol=${encodeURIComponent(SYMBOL)}`);
+        const json = await res.json();
+        if (!json.has_data || !json.items?.length) {
+          panel.innerHTML = '<div class="news-empty">現在データなし</div>';
+          return;
+        }
+        panel.innerHTML = json.items.map((h) => `
+          <div class="holding-row">
+            <div class="holding-top">
+              <span class="holding-type">${escapeHtml(h.type)}</span>
+              <span class="holding-date">${escapeHtml(h.updated)}</span>
+            </div>
+            <div class="holding-name">${escapeHtml(h.name)}</div>
+            <div class="holding-meta">
+              <span>保有比率: ${escapeHtml(h.ratio)}</span>
+              <span>目的: ${escapeHtml(h.purpose)}</span>
+            </div>
+          </div>
+        `).join('');
+      } catch (e) {
+        panel.innerHTML = '<div class="load-fail">読み込み失敗 <button type="button" class="retry-btn" onclick="loadHoldings()">再試行</button></div>';
+      }
+    }
+
+    async function loadSector() {
+      const panel = document.getElementById('sectorPanel');
+      try {
+        const res = await fetchWithProgress(`/api/sector?symbol=${encodeURIComponent(SYMBOL)}`);
+        const json = await res.json();
+        const s = json.sector;
+        if (!s) {
+          panel.innerHTML = '<div class="news-empty">現在データなし</div>';
+          return;
+        }
+        panel.innerHTML = `
+          <div class="sector-grid">
+            <div class="sector-item"><span class="sector-k">セクター</span><span class="sector-v">${escapeHtml(s.sector)}</span></div>
+            <div class="sector-item"><span class="sector-k">業種</span><span class="sector-v">${escapeHtml(s.industry || '—')}</span></div>
+            <div class="sector-item"><span class="sector-k">同業平均PER</span><span class="sector-v">${s.sector_per_avg}</span></div>
+            <div class="sector-item"><span class="sector-k">同業平均PBR</span><span class="sector-v">${s.sector_pbr_avg}</span></div>
+            <div class="sector-item"><span class="sector-k">PER位置</span><span class="sector-v highlight">${escapeHtml(s.per_position)}</span></div>
+            <div class="sector-item"><span class="sector-k">PBR位置</span><span class="sector-v highlight">${escapeHtml(s.pbr_position)}</span></div>
+          </div>
+        `;
+      } catch (e) {
+        panel.innerHTML = '<div class="load-fail">読み込み失敗 <button type="button" class="retry-btn" onclick="loadSector()">再試行</button></div>';
+      }
+    }
+
+    async function loadStock() {
+      const card = document.getElementById('priceCard');
+      try {
+        const res = await fetchWithProgress(`/api/stock?symbol=${encodeURIComponent(SYMBOL)}`);
+        const json = await res.json();
+        if (json.status !== 'ok' || !json.data) {
+          card.innerHTML = `<div class="stock-error">${escapeHtml(json.message || '株価データを取得できませんでした')}</div>`;
+          return;
+        }
+
+        const d = json.data;
+        document.title = `${d.symbol} ${d.name} - StockAI Pro`;
+        document.getElementById('headerSymbol').textContent = d.symbol;
+        document.getElementById('headerName').textContent = d.name || '';
+        renderPts(d);
+
+        const up = (d.change_pct ?? 0) >= 0;
+        const chgClass = up ? 'up' : 'down';
+        const arrow = up ? '▲' : '▼';
+
+        card.innerHTML = `
+          <div class="stock-price-main">
+            <div class="stock-current">${fmtPrice(d.current)}</div>
+            <div class="stock-change ${chgClass}">
+              <span>${arrow} ${fmtNum(Math.abs(d.change ?? 0))}</span>
+              <span class="stock-change-pct">(${d.change_pct != null ? (up ? '+' : '') + d.change_pct.toFixed(2) : '—'}%)</span>
+            </div>
+          </div>
+          <div class="stock-price-sub">
+            <span>始値 ${fmtPrice(d.open)}</span>
+            <span>高値 ${fmtPrice(d.high)}</span>
+            <span>安値 ${fmtPrice(d.low)}</span>
+          </div>
+        `;
+
+        const stats = document.getElementById('stockStats');
+        stats.style.display = 'grid';
+        stats.innerHTML = `
+          <div class="stat-item card-premium"><span class="stat-label">時価総額</span><span class="stat-val">${escapeHtml(d.market_cap_fmt || '—')}</span></div>
+          <div class="stat-item card-premium"><span class="stat-label">PER</span><span class="stat-val">${fmtNum(d.per)}</span></div>
+          <div class="stat-item card-premium"><span class="stat-label">PBR</span><span class="stat-val">${fmtNum(d.pbr)}</span></div>
+          <div class="stat-item card-premium"><span class="stat-label">配当利回り</span><span class="stat-val">${d.dividend_yield != null ? (d.dividend_yield < 0.3 ? (d.dividend_yield * 100).toFixed(2) : d.dividend_yield.toFixed(2)) + '%' : '—'}</span></div>
+          <div class="stat-item card-premium"><span class="stat-label">出来高</span><span class="stat-val">${d.volume != null ? fmtNum(d.volume, 0) : '—'}</span></div>
+          <div class="stat-item card-premium"><span class="stat-label">52週</span><span class="stat-val">${fmtPrice(d['52w_low'])} – ${fmtPrice(d['52w_high'])}</span></div>
+        `;
+      } catch (e) {
+        console.error(e);
+        card.innerHTML = '<div class="stock-error">通信エラー <button type="button" class="retry-btn" onclick="loadStock()">再試行</button></div>';
+      }
+    }
+
+    async function loadAiCard() {
+      const panel = document.getElementById('aiCardPanel');
+      try {
+        const res = await fetchWithProgress(`/api/ai_card?symbol=${encodeURIComponent(SYMBOL)}`);
+        const json = await res.json();
+        if (json.status !== 'ok' || !json.ai_card) {
+          panel.innerHTML = '<div class="stock-error">AI分析を取得できませんでした</div>';
+          return;
+        }
+        const c = json.ai_card;
+        const band = c.band || scoreBandClass(c.total);
+        const items = [
+          { label: '割安度', score: c.valuation },
+          { label: 'モメンタム', score: c.momentum },
+          { label: 'テーマ性', score: c.theme },
+          { label: '需給評価', score: c.supply },
+          { label: 'リスク評価', score: c.risk },
+        ];
+
+        panel.innerHTML = `
+          <div class="ai-card-total ${band}">
+            <div class="ai-total-label">AI総合評価</div>
+            <div class="ai-total-score">${c.total}</div>
+            <div class="ai-total-sub">/ 100</div>
+          </div>
+          <div class="ai-metrics">
+            ${items.map((m) => `
+              <div class="ai-metric ${scoreBandClass(m.score)}">
+                <span class="ai-metric-label">${m.label}</span>
+                <span class="ai-metric-score">${m.score}</span>
+              </div>
+            `).join('')}
+          </div>
+          <div class="trend-ai-box">
+            <div class="trend-row"><span>短期トレンド</span><strong class="trend-tag">${escapeHtml(c.trend_short || '—')}</strong></div>
+            <div class="trend-row"><span>中期トレンド</span><strong class="trend-tag">${escapeHtml(c.trend_mid || '—')}</strong></div>
+            <p class="trend-reason">${escapeHtml(c.trend_reason || '')}</p>
+          </div>
+          <p class="ai-card-comment">${escapeHtml(c.comment || '')}</p>
+        `;
+      } catch (e) {
+        panel.innerHTML = '<div class="stock-error">AI分析失敗 <button type="button" class="retry-btn" onclick="loadAiCard()">再試行</button></div>';
+      }
+    }
+
+    async function loadNews() {
+      const list = document.getElementById('newsList');
+      try {
+        const res = await fetchWithProgress(`/api/news?symbol=${encodeURIComponent(SYMBOL)}`);
+        const json = await res.json();
+        if (json.status !== 'ok' || !json.news || json.news.length === 0) {
+          list.innerHTML = '<div class="news-empty">ニュースがありません</div>';
+          return;
+        }
+        list.innerHTML = json.news.map((n) => `
+          <a class="news-item" href="${escapeHtml(n.url)}" target="_blank" rel="noopener noreferrer">
+            <div class="news-title">${escapeHtml(n.title)}</div>
+            <div class="news-date">${escapeHtml(n.date)}</div>
+          </a>
+        `).join('');
+      } catch (e) {
+        console.error(e);
+        list.innerHTML = '<div class="load-fail">読み込み失敗 <button type="button" class="retry-btn" onclick="loadNews()">再試行</button></div>';
+      }
+    }
+
+    function getChartOptions(width, height, period) {
+      const intraday = period === '1d' || period === '1w';
+      return {
+        width,
+        height,
+        layout: { background: { color: '#121829' }, textColor: '#8b95a8' },
+        grid: {
+          vertLines: { color: 'rgba(255,255,255,0.06)' },
+          horzLines: { color: 'rgba(255,255,255,0.06)' },
+        },
+        crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+        rightPriceScale: {
+          visible: true,
+          borderColor: 'rgba(255,255,255,0.08)',
+          scaleMargins: { top: 0.06, bottom: 0.06 },
+        },
+        leftPriceScale: { visible: false },
+        timeScale: {
+          borderColor: 'rgba(255,255,255,0.08)',
+          timeVisible: true,
+          secondsVisible: intraday,
+        },
+      };
+    }
+
+    function toChartTime(unixSec, period) {
+      if (period === '1d' || period === '1w') return unixSec;
+      const d = new Date(unixSec * 1000);
+      return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+    }
+
+    function mapCandles(candles, period) {
+      return candles.map((c) => ({
+        time: toChartTime(c.time, period),
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+      }));
+    }
+
+    function mapLine(points, period) {
+      if (!points) return [];
+      return points.map((p) => ({
+        time: toChartTime(p.time, period),
+        value: p.value,
+      }));
+    }
+
+    function destroyChart() {
+      lineSeriesList = [];
+      if (chartInstance) {
+        chartInstance.remove();
+        chartInstance = null;
+        candleSeries = null;
+      }
+    }
+
+    function resizeChart() {
+      if (!chartInstance) return;
+      const container = document.getElementById('chartContainer');
+      chartInstance.applyOptions({
+        width: container.clientWidth,
+        height: Math.max(300, Math.min(520, window.innerHeight * 0.52)),
+      });
+    }
+
+    function addMaLine(indicators, key, period) {
+      const data = mapLine(indicators[key], period);
+      if (!data.length) return;
+      const series = chartInstance.addSeries(LightweightCharts.LineSeries, {
+        color: MA_COLORS[key],
+        lineWidth: 2,
+        priceScaleId: 'right',
+        lastValueVisible: false,
+        priceLineVisible: false,
+      });
+      series.setData(data);
+      lineSeriesList.push(series);
+    }
+
+    async function loadChart(period) {
+      const loading = document.getElementById('chartLoading');
+      const errEl = document.getElementById('chartError');
+      document.getElementById('techPeriodBadge').textContent = PERIOD_LABELS[period] || period;
+      loading.style.display = 'block';
+      errEl.style.display = 'none';
+
+      try {
+        const res = await fetchWithProgress(`/api/chart?symbol=${encodeURIComponent(SYMBOL)}&period=${encodeURIComponent(period)}`);
+        const json = await res.json();
+
+        if (json.status !== 'ok' || !json.candles || json.candles.length === 0) {
+          loading.style.display = 'none';
+          errEl.style.display = 'block';
+          errEl.innerHTML = `<span>${escapeHtml(json.message || 'チャートデータがありません')}</span>`;
+          destroyChart();
+          return;
+        }
+
+        loading.style.display = 'none';
+        destroyChart();
+
+        const container = document.getElementById('chartContainer');
+        const w = container.clientWidth || container.parentElement.clientWidth;
+        const h = Math.max(300, Math.min(500, window.innerHeight * 0.48));
+
+        chartInstance = LightweightCharts.createChart(container, getChartOptions(w, h, period));
+
+        candleSeries = chartInstance.addSeries(LightweightCharts.CandlestickSeries, {
+          priceScaleId: 'right',
+          upColor: '#26a69a',
+          downColor: '#ef5350',
+          borderVisible: true,
+          borderUpColor: '#26a69a',
+          borderDownColor: '#ef5350',
+          wickUpColor: '#26a69a',
+          wickDownColor: '#ef5350',
+        });
+        candleSeries.setData(mapCandles(json.candles, period));
+
+        const ind = json.indicators || {};
+        addMaLine(ind, 'ma5', period);
+        addMaLine(ind, 'ma25', period);
+        addMaLine(ind, 'ma75', period);
+        addMaLine(ind, 'bb_upper', period);
+        addMaLine(ind, 'bb_lower', period);
+
+        renderTechnical(json.technical);
+
+        chartInstance.priceScale('right').applyOptions({
+          autoScale: true,
+          scaleMargins: { top: 0.06, bottom: 0.06 },
+        });
+        chartInstance.timeScale().fitContent();
+      } catch (e) {
+        console.error(e);
+        loading.style.display = 'none';
+        errEl.style.display = 'block';
+        errEl.innerHTML = '<span>チャートの読み込みに失敗しました</span>';
+      }
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0b0f1c">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/static/icons/icon-192.svg">
+  <title>StockAI Pro - 日本株分析</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+</head>
+<body class="fade-in">
+  <div id="appSplash" class="app-splash" aria-hidden="true">
+    <img src="/static/icons/icon-192.svg" alt="" width="88" height="88">
+    <h1 class="splash-title">StockAI <span class="logo-pro">Pro</span></h1>
+    <p class="splash-sub">日本株分析</p>
+  </div>
+
+  <div id="installBanner" class="install-banner glass" hidden>
+    <span>📲 StockAI Pro をアプリとしてインストール</span>
+    <button type="button" id="installBtn" class="install-btn">インストール</button>
+    <button type="button" id="installDismiss" class="install-dismiss" aria-label="閉じる">✕</button>
+  </div>
+
+  <div class="global-progress" id="globalProgress" aria-hidden="true"><div class="global-progress-bar"></div></div>
+
+  <!-- ヘッダー -->
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="header-left">
+        <span class="logo-icon">📈</span>
+        <span class="logo-text">StockAI <span class="logo-pro">Pro</span></span>
+      </div>
+      <div class="header-right">
+        <button type="button" class="icon-btn notif-btn" id="notifToggle" title="通知">
+          <span class="notif-icon">🔔</span>
+          <span class="notif-badge" id="notifBadge">0</span>
+        </button>
+        <button type="button" class="icon-btn" id="themeToggle" title="テーマ">⚙️</button>
+      </div>
+    </div>
+    <div class="alert-settings-bar">
+      <label class="alert-toggle-label">
+        <input type="checkbox" id="alertToggle"> 価格通知
+      </label>
+      <label class="alert-threshold-label">
+        閾値 <input type="number" id="alertThreshold" min="0.5" max="20" step="0.5" value="3" class="alert-threshold-input"> %
+      </label>
+    </div>
+  </header>
+
+  <!-- 通知パネル -->
+  <div class="notif-panel" id="notifPanel">
+    <div class="notif-header">
+      <span>🔔 通知センター</span>
+      <button type="button" class="notif-close" id="notifClose" aria-label="閉じる">✕</button>
+    </div>
+    <div class="notif-list" id="notifList">
+      <div class="loading-spin">読み込み中...</div>
+    </div>
+  </div>
+  <div class="notif-overlay" id="notifOverlay"></div>
+
+  <!-- 検索セクション -->
+  <section class="search-section">
+    <div class="search-wrap">
+      <div class="search-box-wrap">
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="searchInput" placeholder="銘柄コード・名称 例: 7203" maxlength="20" autocomplete="off">
+          <button type="button" class="search-btn" id="searchBtn">検索</button>
+        </div>
+        <div class="search-suggest" id="searchSuggest"></div>
+        <div class="search-history" id="searchHistory"></div>
+      </div>
+      <div class="quick-symbols">
+        <span class="qs-label">人気：</span>
+        <button type="button" class="qs-chip" data-symbol="7203">7203</button>
+        <button type="button" class="qs-chip" data-symbol="8035">8035</button>
+        <button type="button" class="qs-chip" data-symbol="9984">9984</button>
+        <button type="button" class="qs-chip" data-symbol="6758">6758</button>
+        <button type="button" class="qs-chip" data-symbol="4063">4063</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 市場指数バー -->
+  <div class="market-bar" id="marketBar">
+    <div class="market-ticker" id="marketTicker">
+      <span class="mt-loading">市場データ読み込み中...</span>
+    </div>
+  </div>
+
+  <!-- メインタブ -->
+  <nav class="main-tabs">
+    <button type="button" class="tab-btn active" data-tab="home">ホーム</button>
+    <button type="button" class="tab-btn" data-tab="ranking">急騰急落</button>
+    <button type="button" class="tab-btn" data-tab="buried">埋もれ株</button>
+    <button type="button" class="tab-btn" data-tab="fund">ファンド</button>
+    <button type="button" class="tab-btn" data-tab="market">市場AI</button>
+  </nav>
+
+  <!-- ホームタブ -->
+  <div class="tab-content active" id="tab-home">
+    <div class="section-title">📊 今日の市場テーマ</div>
+    <div class="market-themes" id="marketThemes">
+      <div class="skeleton-cards"></div>
+    </div>
+
+    <div class="section-header">
+      <div class="section-title">⭐ ウォッチリスト</div>
+      <button type="button" class="add-watch-btn" id="addWatchBtn">＋ 追加</button>
+    </div>
+    <div class="watch-toolbar" id="watchToolbar" style="display: none;">
+      <label class="watch-sort-label" for="watchSort">並び替え</label>
+      <select id="watchSort" class="watch-sort-select">
+        <option value="symbol">コード順</option>
+        <option value="change_desc">騰落率 ↓</option>
+        <option value="change_asc">騰落率 ↑</option>
+        <option value="price_desc">株価 ↓</option>
+        <option value="price_asc">株価 ↑</option>
+      </select>
+    </div>
+    <div class="watchlist" id="watchlist">
+      <div class="empty-watch">
+        <span>銘柄を追加してウォッチリストを作成</span>
+        <button type="button" class="add-watch-btn-lg" id="addWatchBtnLg">＋ 銘柄を追加</button>
+      </div>
+    </div>
+
+    <div class="section-title">🤖 市場AI要約</div>
+    <div class="ai-summary-card" id="aiSummaryCard">
+      <div class="ai-summary-loading">AI分析中...</div>
+    </div>
+  </div>
+
+  <!-- 急騰急落タブ -->
+  <div class="tab-content" id="tab-ranking">
+    <div class="section-title">🚀 本日の急騰銘柄</div>
+    <div class="ranking-list" id="gainersList">
+      <div class="loading-spin">読み込み中...</div>
+    </div>
+    <div class="section-title mt-16">💥 本日の急落銘柄</div>
+    <div class="ranking-list" id="losersList">
+      <div class="loading-spin">読み込み中...</div>
+    </div>
+  </div>
+
+  <!-- 埋もれ株タブ -->
+  <div class="tab-content" id="tab-buried">
+    <div class="section-title">💎 埋もれ銘柄発掘AI</div>
+    <div class="buried-desc">AIがまだ市場に知られていない有望銘柄を独自スコアで発掘</div>
+    <div class="buried-list" id="buriedList">
+      <div class="loading-spin">読み込み中...</div>
+    </div>
+  </div>
+
+  <!-- ファンドタブ -->
+  <div class="tab-content" id="tab-fund">
+    <div class="section-title">🏦 ファンド先回りスクリーナー</div>
+    <div class="buried-desc">ファンド・アクティビストが好む条件の銘柄を先回り発掘</div>
+    <div class="fund-list" id="fundList">
+      <div class="loading-spin">読み込み中...</div>
+    </div>
+  </div>
+
+  <!-- 市場AIタブ -->
+  <div class="tab-content" id="tab-market">
+    <div class="section-title">🌐 市場全体AI分析</div>
+    <div class="market-ai-content" id="marketAiContent">
+      <div class="loading-spin">読み込み中...</div>
+    </div>
+  </div>
+
+  <!-- ウォッチリスト追加モーダル -->
+  <div class="modal-overlay" id="watchModal" style="display: none;">
+    <div class="modal-box">
+      <div class="modal-title">銘柄をウォッチリストに追加</div>
+      <input type="text" id="watchInput" placeholder="4桁コード（例: 7203）" maxlength="4" inputmode="numeric" class="modal-input">
+      <div class="modal-btns">
+        <button type="button" class="modal-cancel" id="watchModalCancel">キャンセル</button>
+        <button type="button" class="modal-ok" id="watchModalOk">追加</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ボトムナビ -->
+  <nav class="bottom-nav">
+    <a href="/" class="bn-item active" data-tab-nav="home">
+      <span class="bn-icon">🏠</span>
+      <span class="bn-label">ホーム</span>
+    </a>
+    <a href="#" class="bn-item" data-tab-nav="ranking">
+      <span class="bn-icon">📊</span>
+      <span class="bn-label">ランキング</span>
+    </a>
+    <a href="#" class="bn-item" data-tab-nav="buried">
+      <span class="bn-icon">💎</span>
+      <span class="bn-label">発掘</span>
+    </a>
+    <a href="#" class="bn-item" data-tab-nav="fund">
+      <span class="bn-icon">🏦</span>
+      <span class="bn-label">ファンド</span>
+    </a>
+    <a href="#" class="bn-item" data-tab-nav="market">
+      <span class="bn-icon">🌐</span>
+      <span class="bn-label">市場AI</span>
+    </a>
+  </nav>
+
+  <script src="/static/script.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      initIndex();
+    });
+
+    const watchCache = {};
+
+    function initIndex() {
+      const input = document.getElementById('searchInput');
+      const btn = document.getElementById('searchBtn');
+
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') doSearch();
+      });
+      btn.addEventListener('click', doSearch);
+
+      document.querySelectorAll('.qs-chip').forEach((chip) => {
+        chip.addEventListener('click', () => goToStock(chip.dataset.symbol));
+      });
+
+      document.querySelectorAll('.tab-btn').forEach((tabBtn) => {
+        tabBtn.addEventListener('click', () => switchTab(tabBtn.dataset.tab));
+      });
+
+      document.querySelectorAll('.bn-item[data-tab-nav]').forEach((item) => {
+        item.addEventListener('click', (e) => {
+          e.preventDefault();
+          switchTab(item.dataset.tabNav);
+        });
+      });
+
+      document.getElementById('notifToggle').addEventListener('click', toggleNotifPanel);
+      document.getElementById('notifClose').addEventListener('click', closeNotifPanel);
+      document.getElementById('notifOverlay').addEventListener('click', closeNotifPanel);
+
+      document.getElementById('addWatchBtn').addEventListener('click', addWatchPrompt);
+      document.getElementById('addWatchBtnLg').addEventListener('click', addWatchPrompt);
+      document.getElementById('watchModalCancel').addEventListener('click', closeWatchModal);
+      document.getElementById('watchModalOk').addEventListener('click', addToWatchlist);
+
+      const watchSort = document.getElementById('watchSort');
+      watchSort.value = localStorage.getItem('watchSort') || 'symbol';
+      watchSort.addEventListener('change', () => {
+        localStorage.setItem('watchSort', watchSort.value);
+        renderWatchlist();
+      });
+
+      loadMarketSummary();
+      loadMarketAi();
+      loadNotifications();
+      loadRanking();
+      loadBuried();
+      loadFund();
+      loadWatchlist();
+    }
+
+    function doSearch() {
+      const val = document.getElementById('searchInput').value.trim();
+      const code = val.match(/\d{4}/)?.[0] || val;
+      if (/^\d{4}$/.test(code)) {
+        saveSearchHistory(code);
+        goToStock(code);
+      } else {
+        showToast('4桁の銘柄コードを入力してください');
+      }
+    }
+    window.doSearch = doSearch;
+
+    function goToStock(symbol) {
+      window.location.href = `/stock/${symbol}`;
+    }
+    window.goToStock = goToStock;
+
+    function switchTab(name) {
+      document.querySelectorAll('.tab-btn').forEach((b) => {
+        b.classList.toggle('active', b.dataset.tab === name);
+      });
+      document.querySelectorAll('.tab-content').forEach((c) => {
+        c.classList.toggle('active', c.id === `tab-${name}`);
+      });
+      document.querySelectorAll('.bn-item').forEach((i) => {
+        i.classList.toggle('active', i.dataset.tabNav === name);
+      });
+    }
+
+    function chgClass(changeStr) {
+      if (!changeStr || changeStr === 'N/A') return 'neutral';
+      return String(changeStr).trim().startsWith('+') ? 'up' : 'down';
+    }
+
+    async function loadMarketSummary() {
+      const themesEl = document.getElementById('marketThemes');
+      const aiCard = document.getElementById('aiSummaryCard');
+      try {
+        const res = await fetchWithProgress('/api/market_summary');
+        const data = await res.json();
+        if (data.status !== 'ok') throw new Error('failed');
+
+        const ticker = document.getElementById('marketTicker');
+        ticker.innerHTML = data.indices.map((i) => `
+          <span class="mt-item card-premium">
+            <span class="mt-name">${escapeHtml(i.name)}</span>
+            <span class="mt-val">${escapeHtml(i.value)}</span>
+            <span class="mt-chg ${chgClass(i.change)}">${escapeHtml(i.change)}</span>
+          </span>
+        `).join('');
+
+        themesEl.innerHTML = `
+          <div class="theme-grid">
+            ${data.themes.map((t) => `
+              <div class="theme-card card-premium ${escapeHtml(t.color)} fade-in">
+                <div class="theme-name">${escapeHtml(t.name)}</div>
+                <div class="theme-trend">${escapeHtml(t.trend)}</div>
+                <div class="theme-reason">${escapeHtml(t.reason || t.detail)}</div>
+                <div class="theme-related">
+                  <span class="theme-rel-label">関連:</span>
+                  ${(t.related || []).map((s) => `
+                    <button type="button" class="theme-stock-chip" data-symbol="${escapeHtml(s)}">${escapeHtml(s)}</button>
+                  `).join('')}
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `;
+        themesEl.querySelectorAll('.theme-stock-chip').forEach((btn) => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            goToStock(btn.dataset.symbol);
+          });
+        });
+
+        aiCard.innerHTML = `
+          <div class="ai-summary-header">
+            🤖 AI Market Summary
+            <span class="ai-time">${escapeHtml(data.updated)}更新</span>
+          </div>
+          <div class="ai-summary-text">${escapeHtml(data.summary)}</div>
+        `;
+      } catch (e) {
+        console.error(e);
+        themesEl.innerHTML = '<div class="load-fail">読み込み失敗 <button type="button" class="retry-btn" onclick="loadMarketSummary()">再試行</button></div>';
+      }
+    }
+
+    async function loadMarketAi() {
+      try {
+        const res = await fetch('/api/market_summary');
+        const data = await res.json();
+        if (data.status !== 'ok') return;
+
+        const el = document.getElementById('marketAiContent');
+        el.innerHTML = `
+          <div class="market-ai-indices">
+            ${data.indices.map((i) => `
+              <div class="market-ai-index">
+                <div class="mai-name">${escapeHtml(i.name)}</div>
+                <div class="mai-val">${escapeHtml(i.value)}</div>
+                <div class="mai-chg ${chgClass(i.change)}">${escapeHtml(i.change)}</div>
+              </div>
+            `).join('')}
+          </div>
+          <div class="ai-summary-card">
+            <div class="ai-summary-header">
+              🤖 市場全体分析
+              <span class="ai-time">${escapeHtml(data.updated)}更新</span>
+            </div>
+            <div class="ai-summary-text">${escapeHtml(data.summary)}</div>
+          </div>
+          <div class="theme-grid mt-16">
+            ${data.themes.map((t) => `
+              <div class="theme-card ${escapeHtml(t.color)}">
+                <div class="theme-name">${escapeHtml(t.name)}</div>
+                <div class="theme-trend">${escapeHtml(t.trend)}</div>
+                <div class="theme-detail">${escapeHtml(t.detail)}</div>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    async function loadNotifications() {
+      try {
+        const res = await fetch('/api/notifications');
+        const data = await res.json();
+        if (data.status !== 'ok') return;
+
+        const list = document.getElementById('notifList');
+        list.innerHTML = data.notifications.map((n) => {
+          const typeClass = n.type.replace(/[^\w]/g, '');
+          return `
+            <div class="notif-item priority-${escapeHtml(n.priority)}" data-symbol="${escapeHtml(n.symbol)}">
+              <div class="notif-item-top">
+                <span class="notif-type-badge type-${escapeHtml(typeClass)}">${escapeHtml(n.type)}</span>
+                <span class="notif-symbol">${escapeHtml(n.symbol)} ${escapeHtml(n.name)}</span>
+                <span class="notif-time">${escapeHtml(n.time)}</span>
+              </div>
+              <div class="notif-msg">${escapeHtml(n.message)}</div>
+            </div>
+          `;
+        }).join('');
+
+        list.querySelectorAll('.notif-item').forEach((item) => {
+          item.addEventListener('click', () => goToStock(item.dataset.symbol));
+        });
+
+        document.getElementById('notifBadge').textContent = String(data.notifications.length);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    async function loadRanking() {
+      const gainersEl = document.getElementById('gainersList');
+      const losersEl = document.getElementById('losersList');
+      try {
+        const res = await fetchWithProgress('/api/ranking');
+        const data = await res.json();
+        if (data.status !== 'ok') throw new Error('failed');
+
+        const liveTag = data.live ? '<span class="live-badge">LIVE</span>' : '';
+
+        gainersEl.innerHTML = data.gainers.map((s, i) => `
+          <div class="rank-card card-premium" data-symbol="${escapeHtml(s.symbol)}">
+            <span class="rank-num">${i + 1}</span>
+            <div class="rank-info">
+              <div class="rank-name">
+                <span class="rank-symbol">${escapeHtml(s.symbol)}</span> ${escapeHtml(s.name)} ${liveTag}
+              </div>
+              <div class="rank-reason">${escapeHtml(s.reason)} | 出来高 ${escapeHtml(s.volume)}</div>
+            </div>
+            <div class="rank-chg up">${escapeHtml(String(s.change_pct).replace('%', ''))}%</div>
+          </div>
+        `).join('');
+
+        losersEl.innerHTML = data.losers.map((s, i) => `
+          <div class="rank-card card-premium" data-symbol="${escapeHtml(s.symbol)}">
+            <span class="rank-num">${i + 1}</span>
+            <div class="rank-info">
+              <div class="rank-name">
+                <span class="rank-symbol">${escapeHtml(s.symbol)}</span> ${escapeHtml(s.name)} ${liveTag}
+              </div>
+              <div class="rank-reason">${escapeHtml(s.reason)} | 出来高 ${escapeHtml(s.volume)}</div>
+            </div>
+            <div class="rank-chg down">${escapeHtml(String(s.change_pct).replace('%', ''))}%</div>
+          </div>
+        `).join('');
+
+        document.querySelectorAll('.rank-card').forEach((card) => {
+          card.addEventListener('click', () => goToStock(card.dataset.symbol));
+        });
+      } catch (e) {
+        gainersEl.innerHTML = '<div class="load-fail">読み込み失敗 <button type="button" class="retry-btn" onclick="loadRanking()">再試行</button></div>';
+        losersEl.innerHTML = '';
+      }
+    }
+
+    async function loadBuried() {
+      try {
+        const res = await fetch('/api/buried');
+        const data = await res.json();
+        if (data.status !== 'ok') return;
+
+        const list = document.getElementById('buriedList');
+        list.innerHTML = data.stocks.map((s) => `
+          <div class="buried-card" data-symbol="${escapeHtml(s.symbol)}">
+            <div class="buried-top">
+              <div>
+                <span class="buried-symbol">${escapeHtml(s.symbol)}</span>
+                <span class="buried-name">${escapeHtml(s.name)}</span>
+              </div>
+              <div class="buried-score-wrap">
+                <div class="buried-score-label">埋もれ度</div>
+                <div class="buried-score">${s.buried_score}</div>
+              </div>
+            </div>
+            <div class="buried-reason">${escapeHtml(s.reason)}</div>
+            <div class="buried-bottom">
+              <div class="buried-themes">
+                ${s.themes.map((t) => `<span class="theme-tag">${escapeHtml(t)}</span>`).join('')}
+              </div>
+              <span class="buried-vol">${escapeHtml(s.vol_signal)}</span>
+            </div>
+          </div>
+        `).join('');
+
+        list.querySelectorAll('.buried-card').forEach((card) => {
+          card.addEventListener('click', () => goToStock(card.dataset.symbol));
+        });
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    async function loadFund() {
+      try {
+        const res = await fetch('/api/fund_screener');
+        const data = await res.json();
+        if (data.status !== 'ok') return;
+
+        const list = document.getElementById('fundList');
+        list.innerHTML = data.stocks.map((s) => `
+          <div class="fund-card" data-symbol="${escapeHtml(s.symbol)}">
+            <div class="fund-top">
+              <div>
+                <span class="buried-symbol">${escapeHtml(s.symbol)}</span>
+                <span class="buried-name">${escapeHtml(s.name)}</span>
+              </div>
+              <div class="fund-score-wrap">
+                <div class="fund-score-label">注目度</div>
+                <div class="fund-score">${s.score}</div>
+              </div>
+            </div>
+            <div class="fund-type">${escapeHtml(s.fund_type)}</div>
+            <div class="buried-reason">${escapeHtml(s.reason)}</div>
+            <div class="fund-flags">
+              ${s.flags.map((f) => `<span class="fund-flag">${escapeHtml(f)}</span>`).join('')}
+            </div>
+          </div>
+        `).join('');
+
+        list.querySelectorAll('.fund-card').forEach((card) => {
+          card.addEventListener('click', () => goToStock(card.dataset.symbol));
+        });
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function sortWatchSymbols(symbols) {
+      const mode = localStorage.getItem('watchSort') || 'symbol';
+      return [...symbols].sort((a, b) => {
+        const da = watchCache[a];
+        const db = watchCache[b];
+        if (mode === 'symbol') return a.localeCompare(b);
+        const pa = da?.current ?? -Infinity;
+        const pb = db?.current ?? -Infinity;
+        const ca = da?.change_pct ?? -Infinity;
+        const cb = db?.change_pct ?? -Infinity;
+        if (mode === 'price_desc') return pb - pa;
+        if (mode === 'price_asc') return pa - pb;
+        if (mode === 'change_desc') return cb - ca;
+        if (mode === 'change_asc') return ca - cb;
+        return 0;
+      });
+    }
+
+    function loadWatchlist() {
+      const saved = JSON.parse(localStorage.getItem('watchlist') || '[]');
+      const container = document.getElementById('watchlist');
+      const toolbar = document.getElementById('watchToolbar');
+
+      if (saved.length === 0) {
+        toolbar.style.display = 'none';
+        container.innerHTML = `
+          <div class="empty-watch card-premium">
+            <span>銘柄を追加してウォッチリストを作成</span>
+            <button type="button" class="add-watch-btn-lg" id="addWatchBtnLg2">＋ 銘柄を追加</button>
+          </div>
+        `;
+        document.getElementById('addWatchBtnLg2').addEventListener('click', addWatchPrompt);
+        return;
+      }
+
+      toolbar.style.display = 'flex';
+      renderWatchlist();
+      saved.forEach((sym) => {
+        if (!watchCache[sym]) loadWatchItem(sym);
+      });
+    }
+
+    function renderWatchlist() {
+      const saved = JSON.parse(localStorage.getItem('watchlist') || '[]');
+      const container = document.getElementById('watchlist');
+      const sorted = sortWatchSymbols(saved);
+
+      container.innerHTML = sorted.map((sym) => {
+        const d = watchCache[sym];
+        if (!d) {
+          return `
+            <div class="watch-item card-premium" data-symbol="${escapeHtml(sym)}">
+              <div class="watch-left">
+                <div class="watch-symbol">${escapeHtml(sym)}</div>
+                <div class="watch-name">読み込み中...</div>
+              </div>
+              <div class="watch-right"><span class="watch-loading-text">…</span></div>
+              <button type="button" class="watch-remove" data-symbol="${escapeHtml(sym)}" aria-label="削除">✕</button>
+            </div>
+          `;
+        }
+        const up = (d.change_pct ?? 0) >= 0;
+        const cls = up ? 'up' : 'down';
+        const price = d.current != null ? `¥${Number(d.current).toLocaleString()}` : 'N/A';
+        const chg = d.change != null ? `${up ? '+' : ''}${Number(d.change).toFixed(0)}` : '—';
+        const pct = d.change_pct != null ? `${up ? '+' : ''}${d.change_pct.toFixed(2)}%` : '—';
+        return `
+          <div class="watch-item card-premium" data-symbol="${escapeHtml(sym)}">
+            <div class="watch-left">
+              <div class="watch-symbol">${escapeHtml(sym)}</div>
+              <div class="watch-name">${escapeHtml((d.name || '').slice(0, 14))}</div>
+            </div>
+            <div class="watch-right">
+              <div class="watch-price">${price}</div>
+              <div class="watch-chg-row ${cls}">
+                <span>${chg}</span>
+                <span class="watch-pct">${pct}</span>
+              </div>
+            </div>
+            <button type="button" class="watch-remove" data-symbol="${escapeHtml(sym)}" aria-label="削除">✕</button>
+          </div>
+        `;
+      }).join('');
+
+      container.querySelectorAll('.watch-item').forEach((item) => {
+        item.addEventListener('click', (e) => {
+          if (e.target.closest('.watch-remove')) return;
+          goToStock(item.dataset.symbol);
+        });
+      });
+      container.querySelectorAll('.watch-remove').forEach((btn) => {
+        btn.addEventListener('click', (e) => removeWatch(e, btn.dataset.symbol));
+      });
+    }
+
+    async function loadWatchItem(sym) {
+      try {
+        const res = await fetch(`/api/stock?symbol=${encodeURIComponent(sym)}`);
+        const data = await res.json();
+        if (data.status !== 'ok') return;
+        watchCache[sym] = data.data;
+        renderWatchlist();
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function addWatchPrompt() {
+      document.getElementById('watchModal').style.display = 'flex';
+      document.getElementById('watchInput').value = '';
+      document.getElementById('watchInput').focus();
+    }
+
+    function closeWatchModal() {
+      document.getElementById('watchModal').style.display = 'none';
+    }
+
+    function addToWatchlist() {
+      const val = document.getElementById('watchInput').value.trim();
+      if (!/^\d{4}$/.test(val)) {
+        showToast('4桁コードを入力してください');
+        return;
+      }
+      const saved = JSON.parse(localStorage.getItem('watchlist') || '[]');
+      if (!saved.includes(val)) {
+        saved.push(val);
+        localStorage.setItem('watchlist', JSON.stringify(saved));
+      }
+      closeWatchModal();
+      loadWatchlist();
+    }
+
+    function removeWatch(e, sym) {
+      e.stopPropagation();
+      delete watchCache[sym];
+      const saved = JSON.parse(localStorage.getItem('watchlist') || '[]').filter((s) => s !== sym);
+      localStorage.setItem('watchlist', JSON.stringify(saved));
+      loadWatchlist();
+    }
+
+    function toggleNotifPanel() {
+      document.getElementById('notifPanel').classList.toggle('open');
+      document.getElementById('notifOverlay').classList.toggle('show');
+    }
+
+    function closeNotifPanel() {
+      document.getElementById('notifPanel').classList.remove('open');
+      document.getElementById('notifOverlay').classList.remove('show');
+    }
+  </script>
+</body>
+</html>
