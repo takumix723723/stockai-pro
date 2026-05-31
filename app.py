@@ -1720,6 +1720,15 @@ def api_search():
     return jsonify({"status": "ok", "results": search_stocks(q)})
 
 
+@app.route("/favicon.ico")
+def favicon():
+    return send_from_directory(
+        os.path.join(BASE_DIR, "static", "icons"),
+        "favicon.ico",
+        mimetype="image/vnd.microsoft.icon",
+    )
+
+
 @app.route("/manifest.json")
 def manifest():
     return send_from_directory(

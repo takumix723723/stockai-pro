@@ -269,7 +269,7 @@ async function checkWatchAlerts() {
           const dir = pct > 0 ? '上昇' : '下落';
           new Notification(`StockAI: ${sym}`, {
             body: `${d.name || sym} が ${pct.toFixed(2)}% ${dir}（基準価格比）`,
-            icon: '/static/icons/icon-192.svg',
+            icon: '/static/icons/icon-192.png',
           });
         }
       }

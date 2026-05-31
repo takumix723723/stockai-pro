@@ -1,5 +1,5 @@
 /* StockAI Pro Service Worker v4 — 軽量・ネットワーク優先 */
-const CACHE_VERSION = 'stockai-pro-v14';
+const CACHE_VERSION = 'stockai-pro-v15';
 const STATIC_CACHE = `${CACHE_VERSION}-core`;
 
 const PRECACHE = [
@@ -8,7 +8,9 @@ const PRECACHE = [
   '/static/script.js',
   '/static/ipo.js',
   '/static/manifest.json',
-  '/static/icons/icon-192.svg',
+  '/static/icons/icon-192.png',
+  '/static/icons/apple-touch-icon.png',
+  '/static/icons/favicon.ico',
 ];
 
 self.addEventListener('install', (event) => {
