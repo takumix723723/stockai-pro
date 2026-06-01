@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from flask import Flask, render_template, jsonify, request, send_from_directory, redirect
+from flask import Flask, render_template, jsonify, request, send_from_directory, redirect, make_response
 from flask_cors import CORS
 import yfinance as yf
 import pandas as pd
@@ -12,6 +12,7 @@ import json
 from datetime import datetime, timedelta
 import traceback
 import re
+import unicodedata
 
 from ipo_data import get_ipo_detail, get_ipo_list, get_ipo_po_meta, get_po_list
 
@@ -125,11 +126,11 @@ def safe_val(val, default=None):
 
 
 def get_ticker(symbol: str):
-    """4桁コード → yfinance Ticker"""
-    sym = symbol.strip()
-    if sym.isdigit():
-        sym = f"{sym}.T"
-    elif not sym.endswith(".T") and "." not in sym:
+    """銘柄コード → yfinance Ticker（7203 / 285A 等）"""
+    sym = str(symbol or "").strip().upper()
+    if sym.endswith(".T"):
+        return yf.Ticker(sym)
+    if "." not in sym:
         sym = f"{sym}.T"
     return yf.Ticker(sym)
 
@@ -947,15 +948,23 @@ def generate_credit_supply(symbol: str, hist: pd.DataFrame, ticker=None) -> dict
     return credit
 
 
-ORDERBOOK_DEPTH = 15  # 気配表示本数（売り・買い各15本）
+ORDERBOOK_DEPTH = 10  # 気配表示本数（売り・買い各10本・スクロール無し想定）
 
 
 def fetch_orderbook(symbol: str, info: dict, current: float | None) -> dict:
     """気配・板風（yfinance bid/ask + 深さ推定）"""
     bid = safe_val(info.get("bid"))
     ask = safe_val(info.get("ask"))
+    if bid is not None and bid <= 0:
+        bid = None
+    if ask is not None and ask <= 0:
+        ask = None
     bid_size = safe_val(info.get("bidSize"))
     ask_size = safe_val(info.get("askSize"))
+    if bid_size is not None and bid_size <= 0:
+        bid_size = None
+    if ask_size is not None and ask_size <= 0:
+        ask_size = None
 
     price = current or safe_val(info.get("currentPrice") or info.get("regularMarketPrice"))
     tick = 1.0 if (price or 0) >= 1000 else (0.1 if (price or 0) >= 100 else 0.01)
@@ -1010,6 +1019,8 @@ def fetch_orderbook(symbol: str, info: dict, current: float | None) -> dict:
 
     sell_total = sum(l["qty"] for l in sells)
     buy_total = sum(l["qty"] for l in buys)
+    sells.sort(key=lambda x: x["price"], reverse=True)
+    buys.sort(key=lambda x: x["price"], reverse=True)
     over_qty = int(sell_total * rng.uniform(0.12, 0.28)) if sells else 0
     under_qty = int(buy_total * rng.uniform(0.12, 0.28)) if buys else 0
     market_sell = int(rng.randint(400, 6000))
@@ -1099,6 +1110,58 @@ STOCK_NAMES = {
     "4503": "アステラス製薬",
     "5108": "ブリヂストン",
     "9022": "JR東海",
+    "6525": "KOKUSAI ELECTRIC",
+    "4062": "イビデン",
+    "6920": "レーザーテック",
+    "3436": "SUMCO",
+    "6268": "ナブテスコ",
+    "6323": "ローツェ",
+    "7242": "カヤバ",
+    "4275": "カーリット",
+    "5632": "三菱製鋼所",
+    "2768": "双日",
+    "7182": "ゆうちょ銀行",
+    "8309": "三井住友トラストHD",
+    "3462": "野村不動産HD",
+    "8830": "住友不動産",
+    "7453": "良品計画",
+    "8233": "高島屋",
+    "4478": "フリー",
+    "3993": "PKSHA Technology",
+    "3778": "さくらインターネット",
+    "6070": "キャリアリンク",
+    "5802": "住友電工",
+    "5803": "フジクラ",
+    "5801": "古河電工",
+    "5101": "横浜ゴム",
+    "5411": "JFEホールディングス",
+    "1605": "INPEX",
+    "5019": "出光興産",
+    "5401": "日本製鉄",
+    "5714": "DOWAホールディングス",
+    "1662": "石油資源開発",
+    "6702": "富士通",
+    "6701": "NEC",
+    "9412": "スカパーJSATHD",
+    "7019": "TDメカトロニクス",
+    "9413": "テレビ東京HD",
+    "4641": "アルプスアルパイン",
+    "6727": "ワコム",
+    "1969": "高砂熱学工業",
+    "6417": "SANKYODDC",
+    "6136": "オーエスジー",
+    "9983": "ファーストリテイリング",
+    "3289": "東急不動産HD",
+    "6958": "日本CMK",
+    "285A": "キオクシア",
+    "8801": "三井不動産",
+    "4519": "中外製薬",
+    "9735": "セコム",
+    "4901": "富士フイルムHD",
+    "6954": "ファナック",
+    "7936": "アシックス",
+    "7269": "スズキ",
+    "6301": "コマツ",
 }
 
 _JP_NAME_RE = re.compile(
@@ -1110,9 +1173,15 @@ def _has_japanese(text: str) -> bool:
     return bool(text and _JP_NAME_RE.search(str(text)))
 
 
+STOCK_CODE_RE = re.compile(r"^\d{3,4}[A-Z]?$", re.I)
+
+
 def _normalize_symbol(symbol: str) -> str:
-    code = str(symbol or "").replace(".T", "").strip()
-    return code[:4] if len(code) >= 4 else code
+    code = str(symbol or "").replace(".T", "").strip().upper()
+    if STOCK_CODE_RE.fullmatch(code):
+        return code
+    digits = "".join(c for c in code if c.isdigit())
+    return digits[:4] if len(digits) >= 4 else (digits or code)
 
 
 def resolve_japanese_name(symbol: str, info: dict | None = None) -> str:
@@ -1144,56 +1213,268 @@ SECTOR_BENCHMARKS = {
     "Utilities": {"per": 14.0, "pbr": 1.0},
 }
 
-THEME_DEFINITIONS = [
-    {
+THEME_CATALOG = {
+    "semiconductor": {
+        "id": "semiconductor",
         "name": "半導体",
         "trend": "強",
         "color": "up",
         "detail": "AI投資期待・設備投資拡大が追い風",
         "reason": "AIデータセンター需要と先端パッケージ投資が継続",
-        "related": ["6857", "8035", "6146", "4063"],
+        "symbols": ["8035", "6857", "6525", "6146", "4062", "6920", "3436", "6268"],
     },
-    {
+    "defense": {
+        "id": "defense",
         "name": "防衛",
         "trend": "強",
         "color": "up",
         "detail": "防衛予算増額の恩恵続く",
         "reason": "政府の防衛力強化方針で関連受注が拡大",
-        "related": ["6526", "7011", "7246"],
+        "symbols": ["7011", "6526", "7242", "4275", "5632", "7246"],
     },
-    {
+    "trading": {
+        "id": "trading",
         "name": "商社",
         "trend": "やや強",
         "color": "up",
         "detail": "資源高・円安が追い風",
         "reason": "資源価格の高止まりと海外事業収益が下支え",
-        "related": ["8058", "8031", "8001"],
+        "symbols": ["8058", "8031", "8001", "8053", "2768"],
     },
-    {
+    "bank": {
+        "id": "bank",
         "name": "銀行",
         "trend": "横ばい",
         "color": "neutral",
         "detail": "利上げ観測は一服",
         "reason": "金利環境は改善も株価は織り込み済み感",
-        "related": ["8306", "8316", "8411"],
+        "symbols": ["8306", "8316", "8411", "7182", "8309"],
     },
-    {
+    "realestate": {
+        "id": "realestate",
         "name": "不動産",
         "trend": "弱",
         "color": "down",
         "detail": "金利上昇懸念が重石",
         "reason": "長期金利上昇でディスカウント率が上昇",
-        "related": ["8802", "8801", "3289"],
+        "symbols": ["8802", "8801", "3289", "3462", "8830"],
     },
-    {
+    "retail": {
+        "id": "retail",
         "name": "小売",
         "trend": "やや弱",
         "color": "down",
         "detail": "個人消費の停滞",
         "reason": "実質賃金の伸び悩みが消費マインドを抑制",
-        "related": ["3382", "9983", "3092"],
+        "symbols": ["3382", "9983", "3092", "7453", "8233"],
     },
+    "ai": {
+        "id": "ai",
+        "name": "AI",
+        "trend": "強",
+        "color": "up",
+        "detail": "生成AI・データセンター投資が加速",
+        "reason": "国内外のAI関連CAPEX拡大で関連銘柄に資金流入",
+        "symbols": ["9984", "4478", "3993", "3778", "6070", "6857"],
+    },
+    "wire": {
+        "id": "wire",
+        "name": "電線",
+        "trend": "やや強",
+        "color": "up",
+        "detail": "再エネ・送配電需要が追い風",
+        "reason": "電力インフラ投資とEV関連需要が底堅い",
+        "symbols": ["5802", "5803", "5801", "5101", "5411"],
+    },
+    "resources": {
+        "id": "resources",
+        "name": "資源",
+        "trend": "やや強",
+        "color": "up",
+        "detail": "資源価格高止まり",
+        "reason": "原油・金属価格の高値圏が採掘・商社株を支援",
+        "symbols": ["1605", "5019", "5401", "5714", "1662", "8058"],
+    },
+    "quantum": {
+        "id": "quantum",
+        "name": "量子",
+        "trend": "注目",
+        "color": "up",
+        "detail": "量子コンピュータ関連が注目",
+        "reason": "国策テーマと研究開発投資の拡大期待",
+        "symbols": ["6702", "6525", "3856", "6701", "6501"],
+    },
+    "space": {
+        "id": "space",
+        "name": "宇宙",
+        "trend": "強",
+        "color": "up",
+        "detail": "宇宙ビジネス・防衛宇宙が拡大",
+        "reason": "衛星コンステレーションと防衛需要が成長",
+        "symbols": ["9412", "7019", "9413", "7011", "4641"],
+    },
+    "disaster": {
+        "id": "disaster",
+        "name": "防災",
+        "trend": "横ばい",
+        "color": "neutral",
+        "detail": "インフラ老朽化対策が継続",
+        "reason": "防災・減災関連の公共投資が底支え",
+        "symbols": ["6727", "1969", "6417", "6136", "6367"],
+    },
+}
+
+THEME_DEFINITIONS = [
+    {
+        "id": t["id"],
+        "name": t["name"],
+        "trend": t["trend"],
+        "color": t["color"],
+        "detail": t["detail"],
+        "reason": t["reason"],
+        "related": t["symbols"][:4],
+    }
+    for t in THEME_CATALOG.values()
 ]
+
+# 検索用エイリアス（略称・一般呼称）
+SEARCH_ALIASES: dict[str, list[str]] = {
+    "6958": ["日本シーエムケイ", "CMK", "シーエムケイ", "日本CMK", "日本シイエムケイ"],
+    "8035": ["TEL", "東エレ", "東京エレクトロン"],
+    "6857": ["ADVANTEST", "アドバン", "アドバンテスト"],
+    "6146": ["DISCO", "ディスコ"],
+    "6525": ["KOKUSAI"],
+    "6920": ["LASERTEC", "レーザテック"],
+    "7203": ["トヨタ", "TOYOTA", "toyota", "Toyota"],
+    "6758": ["ソニー", "SONY"],
+    "9984": ["SBG", "ソフトバンクG", "ソフトバンクグループ", "ソフトバンク"],
+    "9434": ["ソフトバンク", "SoftBank"],
+    "8306": ["MUFG", "三菱UFJ"],
+    "4063": ["信越化学"],
+    "6981": ["ムラタ", "村田"],
+    "5401": ["日本製鉄", "製鉄", "NIPPON STEEL", "ニッポンセイテツ"],
+    "285A": ["キオクシア", "KIOXIA", "kioxia", "キオクシアホールディングス"],
+}
+
+_SEARCH_INDEX: dict[str, str] | None = None
+_JPX_MASTER: dict[str, str] | None = None
+_JPX_MASTER_MTIME: float | None = None
+
+JPX_MASTER_PATH = os.path.join(BASE_DIR, "data", "jpx_stocks.json")
+
+
+def _normalize_search_text(text: str) -> str:
+    if not text:
+        return ""
+    s = unicodedata.normalize("NFKC", str(text).strip())
+    return s.replace("\u3000", " ")
+
+
+def _fold_search_text(text: str) -> str:
+    return _normalize_search_text(text).casefold()
+
+
+def _load_jpx_master() -> dict[str, str]:
+    """JPX上場銘柄マスタ（4440社超）"""
+    global _JPX_MASTER, _JPX_MASTER_MTIME
+    path = JPX_MASTER_PATH
+    if not os.path.isfile(path):
+        return {}
+    try:
+        mtime = os.path.getmtime(path)
+        if _JPX_MASTER is not None and _JPX_MASTER_MTIME == mtime:
+            return _JPX_MASTER
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            _JPX_MASTER = {str(k).upper(): str(v) for k, v in data.items()}
+            _JPX_MASTER_MTIME = mtime
+            return _JPX_MASTER
+    except Exception:
+        traceback.print_exc()
+    return {}
+
+
+def get_search_index() -> dict[str, str]:
+    """銘柄コード → 会社名（JPX全銘柄 + 辞書優先）"""
+    global _SEARCH_INDEX
+    if _SEARCH_INDEX is not None:
+        return _SEARCH_INDEX
+    idx = dict(_load_jpx_master())
+    for theme in THEME_CATALOG.values():
+        for sym in theme.get("symbols", []):
+            code = _normalize_symbol(sym)
+            if code and code not in idx:
+                idx[code] = STOCK_NAMES.get(code, code)
+    idx.update(STOCK_NAMES)
+    _SEARCH_INDEX = idx
+    return idx
+
+
+def _is_stock_code_query(text: str) -> bool:
+    return bool(STOCK_CODE_RE.fullmatch(str(text or "").upper()))
+
+
+def search_stocks(query: str, limit: int = 10) -> list:
+    """銘柄コード・会社名・部分一致検索（JPX全銘柄）"""
+    q = _normalize_search_text(query)
+    if not q:
+        return []
+    q_fold = _fold_search_text(q)
+    q_compact = q_fold.replace(" ", "")
+    q_code = q.upper().replace(".T", "")
+
+    scored: list[tuple[int, str, str]] = []
+
+    for code, name in get_search_index().items():
+        name_norm = _normalize_search_text(name)
+        name_fold = _fold_search_text(name)
+        name_compact = name_fold.replace(" ", "")
+        score = 0
+
+        if code == q_code or code == q:
+            score = 1000
+        elif _is_stock_code_query(q_code) and code.startswith(q_code):
+            score = 920 - len(q_code)
+        elif q_code in code or q in code:
+            score = 800
+
+        if name_norm == q or name_compact == q_compact:
+            score = max(score, 960)
+        elif name_fold.startswith(q_fold) or name_compact.startswith(q_compact):
+            score = max(score, 880 - min(len(q_fold), 40))
+        elif q_fold in name_fold or q_compact in name_compact:
+            score = max(score, 760 - min(len(q_fold), 60))
+
+        if score > 0 and code in STOCK_NAMES:
+            score += 120
+
+        for alias in SEARCH_ALIASES.get(code, []):
+            alias_fold = _fold_search_text(alias)
+            alias_compact = alias_fold.replace(" ", "")
+            if alias_fold == q_fold or alias_compact == q_compact:
+                score = max(score, 940)
+            elif alias_fold.startswith(q_fold) or alias_compact.startswith(q_compact):
+                score = max(score, 860 - min(len(q_fold), 40))
+            elif q_fold in alias_fold or q_compact in alias_compact:
+                score = max(score, 720)
+
+        if score > 0:
+            scored.append((score, code, name))
+
+    scored.sort(key=lambda x: (-x[0], x[1]))
+
+    seen: set[str] = set()
+    results: list[dict] = []
+    for _score, code, name in scored:
+        if code in seen:
+            continue
+        seen.add(code)
+        display = STOCK_NAMES.get(code, name)
+        results.append({"symbol": code, "name": display})
+        if len(results) >= limit:
+            break
+    return results
 
 
 def calc_trend_judgment(hist: pd.DataFrame) -> dict:
@@ -1427,19 +1708,7 @@ def fetch_live_ranking(top_n=5):
     return gainers, losers
 
 
-def search_stocks(query: str, limit=8) -> list:
-    q = query.strip()
-    if not q:
-        return []
-    results = []
-    for code, name in STOCK_NAMES.items():
-        if q in code or q.lower() in name.lower():
-            results.append({"symbol": code, "name": name})
-    if q.isdigit():
-        for code, name in STOCK_NAMES.items():
-            if code.startswith(q) and code not in [r["symbol"] for r in results]:
-                results.append({"symbol": code, "name": name})
-    return results[:limit]
+# search_stocks は get_search_index / SEARCH_ALIASES 定義後に実装済み
 
 
 # ============================================================
@@ -1454,7 +1723,11 @@ def index():
 
 @app.route("/stock/<symbol>")
 def stock_detail(symbol):
-    return render_template("stock.html", symbol=symbol)
+    resp = make_response(render_template("stock.html", symbol=symbol))
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["X-Chart-Period-UI"] = "v39"
+    return resp
 
 
 @app.route("/api/stock")
@@ -1554,21 +1827,87 @@ def api_orderbook():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+# チャート時間足 → yfinance (period, interval)。日足の拡大表示は行わない。
+CHART_BASELINE_BARS = 52
+
+CHART_PERIOD_MAP = {
+    "5m": {
+        "yf_period": "5d",
+        "interval": "5m",
+        "label": "5分",
+        "max_bars": 78,
+        "visible_bars": CHART_BASELINE_BARS,
+    },
+    "15m": {
+        "yf_period": "10d",
+        "interval": "15m",
+        "label": "15分",
+        "max_bars": 80,
+        "visible_bars": CHART_BASELINE_BARS,
+    },
+    "1D": {
+        "yf_period": "1y",
+        "interval": "1d",
+        "label": "1日",
+        "visible_bars": CHART_BASELINE_BARS,
+    },
+    "1w": {
+        "yf_period": "5y",
+        "interval": "1wk",
+        "label": "1週",
+        "visible_bars": CHART_BASELINE_BARS,
+    },
+    "1M": {
+        "yf_period": "1mo",
+        "interval": "1d",
+        "label": "1ヶ月",
+        "visible_bars": 22,
+    },
+    "6M": {
+        "yf_period": "6mo",
+        "interval": "1d",
+        "label": "6ヶ月",
+        "visible_bars": CHART_BASELINE_BARS,
+    },
+    "1Y": {
+        "yf_period": "1y",
+        "interval": "1d",
+        "label": "1年",
+        "visible_bars": CHART_BASELINE_BARS,
+    },
+}
+
+CHART_PERIOD_LEGACY = {
+    "1d": "5m",
+    "1w": "1w",
+    "1mo": "1M",
+    "3mo": "6M",
+    "1y": "1Y",
+    "1m": "5m",
+    "30m": "15m",
+    "1h": "1D",
+}
+
+
+def _trim_history(hist: pd.DataFrame, max_bars: int | None) -> pd.DataFrame:
+    if hist is None or hist.empty or not max_bars or len(hist) <= max_bars:
+        return hist
+    return hist.iloc[-max_bars:]
+
+
 @app.route("/api/chart")
 def api_chart():
     symbol = request.args.get("symbol", "7203")
-    period = request.args.get("period", "1mo")
+    period = request.args.get("period", "1D")
+    period = CHART_PERIOD_LEGACY.get(period, period)
     try:
         ticker = get_ticker(symbol)
-        period_map = {
-            "1d": ("1d", "5m"),
-            "1w": ("5d", "15m"),
-            "1mo": ("1mo", "1d"),
-            "3mo": ("3mo", "1d"),
-            "1y": ("1y", "1d"),
-        }
-        yf_period, interval = period_map.get(period, ("1mo", "1d"))
+        cfg = CHART_PERIOD_MAP.get(period, CHART_PERIOD_MAP["1D"])
+        yf_period = cfg["yf_period"]
+        interval = cfg["interval"]
+        interval_display = interval
         hist = get_history_safe(ticker, period=yf_period, interval=interval)
+        hist = _trim_history(hist, cfg.get("max_bars"))
 
         if hist.empty:
             return jsonify({"status": "error", "message": "データなし"}), 404
@@ -1587,11 +1926,12 @@ def api_chart():
                     {"time": ts, "open": o, "high": h, "low": l, "close": c}
                 )
             if v is not None:
+                up = c is not None and o is not None and c >= o
                 volumes.append(
                     {
                         "time": ts,
                         "value": v,
-                        "color": "#26a69a" if c >= o else "#ef5350",
+                        "color": "#26a69a" if up else "#ef5350",
                     }
                 )
 
@@ -1621,6 +1961,12 @@ def api_chart():
             {
                 "status": "ok",
                 "period": period,
+                "interval": interval,
+                "interval_display": interval_display,
+                "yf_period": yf_period,
+                "label": cfg["label"],
+                "visible_bars": cfg.get("visible_bars", CHART_BASELINE_BARS),
+                "baseline_bars": CHART_BASELINE_BARS,
                 "candles": candles,
                 "volumes": volumes,
                 "technical": technical,
@@ -1834,7 +2180,13 @@ def api_sector():
 @app.route("/api/search")
 def api_search():
     q = request.args.get("q", "").strip()
-    return jsonify({"status": "ok", "results": search_stocks(q)})
+    try:
+        limit = min(int(request.args.get("limit", 10)), 20)
+    except ValueError:
+        limit = 10
+    resp = make_response(jsonify({"status": "ok", "results": search_stocks(q, limit=limit)}))
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 @app.route("/favicon.ico")
@@ -1898,18 +2250,35 @@ def api_market_indices():
     return _json_cached("market_indices", CACHE_TTL_MARKET, build)
 
 
+def _theme_related_preview(symbols: list, limit: int = 4) -> list:
+    """テーマカード用：コード＋会社名"""
+    out = []
+    for code in symbols[:limit]:
+        out.append(
+            {
+                "symbol": code,
+                "name": STOCK_NAMES.get(code, code),
+            }
+        )
+    return out
+
+
 def _build_market_summary_payload():
-    themes = [
-        {
-            "name": t["name"],
-            "trend": t["trend"],
-            "color": t["color"],
-            "detail": t["detail"],
-            "reason": t["reason"],
-            "related": t["related"],
-        }
-        for t in THEME_DEFINITIONS
-    ]
+    themes = []
+    for t in THEME_DEFINITIONS:
+        cat = THEME_CATALOG.get(t["id"], {})
+        symbols = cat.get("symbols") or t.get("related") or []
+        themes.append(
+            {
+                "id": t["id"],
+                "name": t["name"],
+                "trend": t["trend"],
+                "color": t["color"],
+                "detail": t["detail"],
+                "reason": t["reason"],
+                "related": _theme_related_preview(symbols),
+            }
+        )
 
     indices = []
     for name, yf_sym in MARKET_INDEX_SYMBOLS.items():
@@ -1946,10 +2315,92 @@ def _build_market_summary_payload():
     }
 
 
+def fetch_theme_stock_quote(symbol: str) -> dict:
+    """テーマ一覧用の軽量株価スナップショット"""
+    code = _normalize_symbol(symbol)
+    row = {
+        "symbol": code,
+        "name": STOCK_NAMES.get(code, code),
+        "current": None,
+        "change": None,
+        "change_pct": None,
+    }
+    try:
+        ticker = get_ticker(code)
+        info = get_ticker_info(ticker)
+        hist = get_history_safe(ticker, period="5d", interval="1d")
+        current = safe_val(
+            info.get("currentPrice") or info.get("regularMarketPrice")
+        )
+        prev = safe_val(
+            info.get("previousClose") or info.get("regularMarketPreviousClose")
+        )
+        if current is None and not hist.empty:
+            current = safe_val(hist["Close"].iloc[-1])
+        if prev is None and len(hist) >= 2:
+            prev = safe_val(hist["Close"].iloc[-2])
+        row["name"] = resolve_japanese_name(code, info)
+        row["current"] = current
+        if current is not None and prev is not None and prev != 0:
+            row["change"] = round(current - prev, 2)
+            row["change_pct"] = round((current - prev) / prev * 100, 2)
+    except Exception:
+        traceback.print_exc()
+    return row
+
+
+def build_theme_detail(theme_id: str) -> dict | None:
+    theme = THEME_CATALOG.get(theme_id)
+    if not theme:
+        return None
+    stocks = []
+    for sym in theme["symbols"]:
+        stocks.append(fetch_theme_stock_quote(sym))
+        time.sleep(0.04)
+    return {
+        "id": theme["id"],
+        "name": theme["name"],
+        "trend": theme["trend"],
+        "color": theme["color"],
+        "detail": theme["detail"],
+        "reason": theme["reason"],
+        "stocks": stocks,
+    }
+
+
+@app.route("/api/themes")
+def api_themes():
+    """テーマ一覧"""
+    themes = [
+        {
+            "id": t["id"],
+            "name": t["name"],
+            "trend": t["trend"],
+            "color": t["color"],
+            "detail": t["detail"],
+            "symbol_count": len(t["symbols"]),
+        }
+        for t in THEME_CATALOG.values()
+    ]
+    return jsonify({"status": "ok", "themes": themes})
+
+
+@app.route("/api/themes/<theme_id>")
+def api_theme_detail(theme_id):
+    """テーマ関連銘柄一覧（株価付き）"""
+    if theme_id not in THEME_CATALOG:
+        return jsonify({"status": "error", "message": "テーマが見つかりません"}), 404
+
+    def build():
+        return {"status": "ok", "theme": build_theme_detail(theme_id)}
+
+    return _json_cached(f"theme_detail_{theme_id}", CACHE_TTL_MARKET, build)
+
+
 @app.route("/api/market_summary")
 def api_market_summary():
     """市場サマリーAI（テーマ・指数・要約）"""
-    return _json_cached("market_summary", CACHE_TTL_MARKET, _build_market_summary_payload)
+    return _json_cached("market_summary_v2", CACHE_TTL_MARKET, _build_market_summary_payload)
 
 
 @app.route("/api/ranking")

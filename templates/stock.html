@@ -13,7 +13,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/static/icons/apple-touch-icon.png">
   <link rel="manifest" href="/manifest.json">
   <title>{{ symbol }} - StockAI Pro</title>
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/style.css?v=39">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
@@ -53,12 +53,15 @@
 
     <section class="stock-stats" id="stockStats" style="display: none;"></section>
 
-    <div class="chart-period-tabs" id="periodTabs">
-      <button type="button" class="period-btn" data-period="1d">1日</button>
-      <button type="button" class="period-btn" data-period="1w">1週</button>
-      <button type="button" class="period-btn active" data-period="1mo">1月</button>
-      <button type="button" class="period-btn" data-period="3mo">3月</button>
-      <button type="button" class="period-btn" data-period="1y">1年</button>
+    <!-- chart-period-ui-v39: 5分/15分/1日/1週/1ヶ月/6ヶ月/1年（7タブ固定） -->
+    <div class="chart-period-tabs" id="periodTabs" data-period-ui="v39" role="tablist" aria-label="チャート期間">
+      <button type="button" class="period-btn" data-period="5m" role="tab" aria-selected="false">5分</button>
+      <button type="button" class="period-btn" data-period="15m" role="tab" aria-selected="false">15分</button>
+      <button type="button" class="period-btn" data-period="1D" role="tab" aria-selected="false">1日</button>
+      <button type="button" class="period-btn" data-period="1w" role="tab" aria-selected="false">1週</button>
+      <button type="button" class="period-btn" data-period="1M" role="tab" aria-selected="false">1ヶ月</button>
+      <button type="button" class="period-btn" data-period="6M" role="tab" aria-selected="false">6ヶ月</button>
+      <button type="button" class="period-btn" data-period="1Y" role="tab" aria-selected="false">1年</button>
     </div>
 
     <section class="stock-chart-wrap card-premium">
@@ -81,7 +84,7 @@
 
     <div class="stock-subpanel active" id="subpanel-technical">
     <section class="section-block">
-      <h2 class="section-title">📐 テクニカル分析 <span class="tech-period-badge" id="techPeriodBadge">1月</span></h2>
+      <h2 class="section-title">📐 テクニカル分析 <span class="tech-period-badge" id="techPeriodBadge">1日</span></h2>
       <div class="tech-panel card-premium" id="techPanel">
         <div class="skeleton-block"></div>
       </div>
@@ -135,7 +138,8 @@
     </section>
   </main>
 
-  <script src="/static/script.js"></script>
+  <script src="/static/script.js?v=39"></script>
+  <script src="/static/stock-chart-periods.js?v=39"></script>
 <script>
     const SYMBOL = {{ symbol|tojson }};
     const MA_COLORS = {
@@ -147,12 +151,78 @@
     let candleSeries = null;
     let lineSeriesList = [];
     let lastChartJson = null;
-    let currentPeriod = '1mo';
+    const PERIOD_LABELS = window.CHART_PERIOD_LABELS || {};
+    const CHART_PERIOD_STORAGE_KEY = 'stockai_chart_period_v3';
+
+    function isIntradayPeriod(period) {
+      return window.isIntradayChartPeriod ? window.isIntradayChartPeriod(period) : (period === '5m' || period === '15m');
+    }
+
+    function isJapanMarketOpen(now = new Date()) {
+      const jstStr = now.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' });
+      const jst = new Date(jstStr);
+      const day = jst.getDay();
+      if (day === 0 || day === 6) return false;
+      const mins = jst.getHours() * 60 + jst.getMinutes();
+      return (mins >= 540 && mins < 690) || (mins >= 750 && mins < 900);
+    }
+
+    function getDefaultChartPeriod() {
+      const saved = localStorage.getItem(CHART_PERIOD_STORAGE_KEY)
+        || localStorage.getItem('stockai_chart_period_v2')
+        || localStorage.getItem('stockai_chart_period');
+      const migrated = window.migrateChartPeriod ? window.migrateChartPeriod(saved) : saved;
+      if (migrated && PERIOD_LABELS[migrated]) return migrated;
+      return isJapanMarketOpen() ? '15m' : '1D';
+    }
+
+    function onPeriodSelect(period) {
+      if (period === currentPeriod) return;
+      currentPeriod = period;
+      localStorage.setItem(CHART_PERIOD_STORAGE_KEY, currentPeriod);
+      setActivePeriodTab(currentPeriod);
+      loadChart(currentPeriod);
+    }
+
+    function bindChartPeriodTabs() {
+      const host = document.getElementById('periodTabs');
+      if (!host) return;
+      if (window.ensureChartPeriodTabs) {
+        window.ensureChartPeriodTabs(host);
+      } else if (
+        host.querySelector('[data-period="1mo"], [data-period="3mo"], [data-period="1y"]')
+        || !host.querySelector('[data-period="5m"]')
+      ) {
+        host.dataset.periodUi = 'v39';
+        host.innerHTML =
+          '<button type="button" class="period-btn" data-period="5m" role="tab">5分</button>' +
+          '<button type="button" class="period-btn" data-period="15m" role="tab">15分</button>' +
+          '<button type="button" class="period-btn" data-period="1D" role="tab">1日</button>' +
+          '<button type="button" class="period-btn" data-period="1w" role="tab">1週</button>' +
+          '<button type="button" class="period-btn" data-period="1M" role="tab">1ヶ月</button>' +
+          '<button type="button" class="period-btn" data-period="6M" role="tab">6ヶ月</button>' +
+          '<button type="button" class="period-btn" data-period="1Y" role="tab">1年</button>';
+      }
+      host.querySelectorAll('.period-btn').forEach((btn) => {
+        btn.addEventListener('click', () => onPeriodSelect(btn.dataset.period));
+      });
+    }
+
+    function setActivePeriodTab(period) {
+      document.querySelectorAll('.period-btn').forEach((btn) => {
+        const active = btn.dataset.period === period;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-selected', active ? 'true' : 'false');
+      });
+      const activeBtn = document.querySelector(`.period-btn[data-period="${period}"]`);
+      activeBtn?.scrollIntoView({ inline: 'nearest', block: 'nearest', behavior: 'smooth' });
+    }
+
+    let currentPeriod = getDefaultChartPeriod();
     const chartLayers = { ma5: false, ma25: true, ma75: false, bb: false };
     const subpanelLoaded = { supply: false, orderbook: false };
     let activeStockSubtab = 'technical';
     let lastStockPrice = null;
-    const PERIOD_LABELS = { '1d': '1日', '1w': '1週', '1mo': '1月', '3mo': '3月', '1y': '1年' };
     const STOCK_FAST_MS = (window.REFRESH_MS && window.REFRESH_MS.STOCK_FAST) || 4000;
     const STOCK_SLOW_MS = (window.REFRESH_MS && window.REFRESH_MS.STOCK_SLOW) || 12000;
 
@@ -166,14 +236,8 @@
       const savedTheme = localStorage.getItem('theme');
       if (savedTheme) document.documentElement.setAttribute('data-theme', savedTheme);
 
-      document.querySelectorAll('.period-btn').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          document.querySelectorAll('.period-btn').forEach((b) => b.classList.remove('active'));
-          btn.classList.add('active');
-          currentPeriod = btn.dataset.period;
-          loadChart(currentPeriod);
-        });
-      });
+      bindChartPeriodTabs();
+      setActivePeriodTab(currentPeriod);
 
       document.querySelectorAll('#chartToggles input[data-layer]').forEach((input) => {
         input.addEventListener('change', () => {
@@ -645,84 +709,77 @@
     }
     window.loadSupply = loadSupply;
 
-    function renderOrderbookPanel(b, panel) {
-      const prevScroll = panel.querySelector('.ob-board-scroll');
-      const scrollTop = prevScroll ? prevScroll.scrollTop : 0;
+    function fmtBoardPrice(n) {
+      if (n == null || Number.isNaN(n)) return '—';
+      return Number(n).toLocaleString('ja-JP', { maximumFractionDigits: 2 });
+    }
 
+    function renderOrderbookPanel(b, panel) {
       const sells = (b.sells || b.levels || []).filter((l) => l.side === 'sell').sort((a, c) => c.price - a.price);
       const buys = (b.buys || b.levels || []).filter((l) => l.side === 'buy').sort((a, c) => c.price - a.price);
-      const allQty = [...sells, ...buys].map((l) => l.qty);
-      const maxQty = Math.max(...allQty, b.over_qty || 0, b.under_qty || 0, 1);
 
       const sellRow = (l) => `
         <div class="ob-row ob-row-sell">
-          <span class="ob-qty-cell sell">
-            <span class="ob-qty-bar sell" style="width:${Math.round((l.qty / maxQty) * 100)}%"></span>
-            <span class="ob-qty">${fmtNum(l.qty, 0)}</span>
-          </span>
-          <span class="ob-price ask">${fmtPrice(l.price)}</span>
-          <span class="ob-qty-cell"></span>
+          <span class="ob-col-qty ob-col-qty-sell">${fmtNum(l.qty, 0)}</span>
+          <span class="ob-col-price ask">${fmtBoardPrice(l.price)}</span>
+          <span class="ob-col-qty ob-col-qty-buy"></span>
         </div>`;
 
       const buyRow = (l) => `
         <div class="ob-row ob-row-buy">
-          <span class="ob-qty-cell"></span>
-          <span class="ob-price bid">${fmtPrice(l.price)}</span>
-          <span class="ob-qty-cell buy">
-            <span class="ob-qty-bar buy" style="width:${Math.round((l.qty / maxQty) * 100)}%"></span>
-            <span class="ob-qty">${fmtNum(l.qty, 0)}</span>
-          </span>
+          <span class="ob-col-qty ob-col-qty-sell"></span>
+          <span class="ob-col-price bid">${fmtBoardPrice(l.price)}</span>
+          <span class="ob-col-qty ob-col-qty-buy">${fmtNum(l.qty, 0)}</span>
         </div>`;
 
       panel.innerHTML = `
-        <div class="ob-source">${escapeHtml(b.source || '')} · ${sells.length + buys.length}本気配</div>
+        <div class="ob-source">${escapeHtml(b.source || '')}</div>
         <div class="ob-best-row">
-          <div class="ob-best-item"><span class="ob-k">Best Bid</span><span class="ob-v bid">${fmtPrice(b.bid)}</span><span class="ob-q">${b.bid_size != null ? fmtNum(b.bid_size, 0) + '株' : '—'}</span></div>
-          <div class="ob-spread"><span class="ob-k">Spread</span><span class="ob-v">${b.spread != null ? fmtNum(b.spread) : '—'}</span><span class="ob-sub">${b.spread_pct != null ? b.spread_pct + '%' : ''}</span></div>
-          <div class="ob-best-item"><span class="ob-k">Best Ask</span><span class="ob-v ask">${fmtPrice(b.ask)}</span><span class="ob-q">${b.ask_size != null ? fmtNum(b.ask_size, 0) + '株' : '—'}</span></div>
+          <div class="ob-best-item"><span class="ob-k">Best Bid</span><span class="ob-v bid">${fmtBoardPrice(b.bid)}</span><span class="ob-q">${b.bid_size != null ? fmtNum(b.bid_size, 0) + '株' : '—'}</span></div>
+          <div class="ob-spread"><span class="ob-k">Spread</span><span class="ob-v">${b.spread != null ? fmtBoardPrice(b.spread) : '—'}</span><span class="ob-sub">${b.spread_pct != null ? b.spread_pct + '%' : ''}</span></div>
+          <div class="ob-best-item"><span class="ob-k">Best Ask</span><span class="ob-v ask">${fmtBoardPrice(b.ask)}</span><span class="ob-q">${b.ask_size != null ? fmtNum(b.ask_size, 0) + '株' : '—'}</span></div>
         </div>
-        <div class="ob-board-head"><span>売数量</span><span>値段</span><span>買数量</span></div>
-        <div class="ob-board-scroll">
-          <div class="ob-board">
-            <div class="ob-row ob-row-over">
-              <span class="ob-qty-cell sell"><span class="ob-qty">${b.over_qty != null ? fmtNum(b.over_qty, 0) : '—'}</span></span>
-              <span class="ob-price ask">OVER</span>
-              <span class="ob-qty-cell"></span>
-            </div>
-            ${sells.map(sellRow).join('')}
-            <div class="ob-row ob-row-mid">
-              <span></span>
-              <span class="ob-mid-price">${b.current != null ? fmtPrice(b.current) : '—'}</span>
-              <span></span>
-            </div>
-            ${buys.map(buyRow).join('')}
-            <div class="ob-row ob-row-under">
-              <span class="ob-qty-cell"></span>
-              <span class="ob-price bid">UNDER</span>
-              <span class="ob-qty-cell buy"><span class="ob-qty">${b.under_qty != null ? fmtNum(b.under_qty, 0) : '—'}</span></span>
-            </div>
+        <div class="ob-summary">
+          <div class="ob-summary-item">
+            <span class="ob-summary-k">売り総量</span>
+            <span class="ob-summary-v sell">${b.total_sell_qty != null ? fmtNum(b.total_sell_qty, 0) : '—'}</span>
+          </div>
+          <div class="ob-summary-item">
+            <span class="ob-summary-k">成行</span>
+            <span class="ob-summary-v ob-summary-market">
+              <span class="sell">${b.market_sell_qty != null ? fmtNum(b.market_sell_qty, 0) : '—'}</span>
+              <span class="ob-summary-sep">/</span>
+              <span class="buy">${b.market_buy_qty != null ? fmtNum(b.market_buy_qty, 0) : '—'}</span>
+            </span>
+          </div>
+          <div class="ob-summary-item">
+            <span class="ob-summary-k">買い総量</span>
+            <span class="ob-summary-v buy">${b.total_buy_qty != null ? fmtNum(b.total_buy_qty, 0) : '—'}</span>
           </div>
         </div>
-        <div class="ob-footer">
-          <div class="ob-footer-row">
-            <span class="ob-footer-label">成行</span>
-            <span class="ob-qty sell">${b.market_sell_qty != null ? fmtNum(b.market_sell_qty, 0) : '—'}</span>
-            <span class="ob-footer-mid">成行</span>
-            <span class="ob-qty buy">${b.market_buy_qty != null ? fmtNum(b.market_buy_qty, 0) : '—'}</span>
+        <div class="ob-board">
+          <div class="ob-board-head">
+            <span>売数量</span>
+            <span>価格</span>
+            <span>買数量</span>
           </div>
-          <div class="ob-footer-row ob-footer-total">
-            <span class="ob-footer-label">売り総量</span>
-            <span class="ob-qty sell">${b.total_sell_qty != null ? fmtNum(b.total_sell_qty, 0) : '—'}</span>
-            <span class="ob-footer-mid">買い総量</span>
-            <span class="ob-qty buy">${b.total_buy_qty != null ? fmtNum(b.total_buy_qty, 0) : '—'}</span>
+          <div class="ob-row ob-row-over">
+            <span class="ob-col-qty ob-col-qty-sell">${b.over_qty != null ? fmtNum(b.over_qty, 0) : '—'}</span>
+            <span class="ob-col-price ask">OVER</span>
+            <span class="ob-col-qty ob-col-qty-buy"></span>
+          </div>
+          ${sells.map(sellRow).join('')}
+          <div class="ob-row ob-row-mid">
+            <span class="ob-col-mid">現在 ${fmtBoardPrice(b.current)}</span>
+          </div>
+          ${buys.map(buyRow).join('')}
+          <div class="ob-row ob-row-under">
+            <span class="ob-col-qty ob-col-qty-sell"></span>
+            <span class="ob-col-price bid">UNDER</span>
+            <span class="ob-col-qty ob-col-qty-buy">${b.under_qty != null ? fmtNum(b.under_qty, 0) : '—'}</span>
           </div>
         </div>
       `;
-
-      const nextScroll = panel.querySelector('.ob-board-scroll');
-      if (nextScroll && scrollTop > 0) {
-        nextScroll.scrollTop = scrollTop;
-      }
     }
 
     async function loadOrderbook(opts = {}) {
@@ -780,7 +837,7 @@
     }
 
     function getChartOptions(width, height, period) {
-      const intraday = period === '1d' || period === '1w';
+      const intraday = isIntradayPeriod(period);
       return {
         width,
         height,
@@ -805,7 +862,7 @@
     }
 
     function toChartTime(unixSec, period) {
-      if (period === '1d' || period === '1w') return unixSec;
+      if (isIntradayPeriod(period)) return unixSec;
       const d = new Date(unixSec * 1000);
       return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
     }
@@ -840,10 +897,14 @@
     function resizeChart() {
       if (!chartInstance) return;
       const container = document.getElementById('chartContainer');
+      const w = container.clientWidth;
       chartInstance.applyOptions({
-        width: container.clientWidth,
+        width: w,
         height: chartHeight(),
       });
+      if (lastChartJson) {
+        applyChartViewportFromJson(lastChartJson, currentPeriod, w);
+      }
     }
 
     function clearLineSeries() {
@@ -898,6 +959,16 @@
           /* ignore */
         }
       }
+    }
+
+    function applyChartViewportFromJson(json, period, containerWidth) {
+      const candles = json.candles || [];
+      if (!chartInstance || !candles.length || !window.applyChartViewport) return;
+      window.applyChartViewport(chartInstance, candles.length, {
+        width: containerWidth,
+        visibleBars: json.visible_bars || json.baseline_bars || window.CHART_BASELINE_BARS,
+        intraday: isIntradayPeriod(period),
+      });
     }
 
     async function loadChart(period, opts = {}) {
@@ -955,7 +1026,8 @@
           wickUpColor: '#26a69a',
           wickDownColor: '#ef5350',
         });
-        candleSeries.setData(mapCandles(json.candles, period));
+        const mapped = mapCandles(json.candles, period);
+        candleSeries.setData(mapped);
 
         lastChartJson = { ...json, period };
         applyChartLayers();
@@ -966,7 +1038,7 @@
           autoScale: true,
           scaleMargins: { top: 0.06, bottom: 0.06 },
         });
-        chartInstance.timeScale().fitContent();
+        applyChartViewportFromJson(json, period, w);
         errEl.style.display = 'none';
         resetAutoRetry('chart');
         return true;

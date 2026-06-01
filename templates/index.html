@@ -13,7 +13,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/static/icons/apple-touch-icon.png">
   <link rel="manifest" href="/manifest.json">
   <title>StockAI Pro - 日本株分析</title>
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/style.css?v=37">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 </head>
@@ -66,11 +66,11 @@
 
   <!-- 検索セクション -->
   <section class="search-section">
-    <div class="search-wrap">
-      <div class="search-box-wrap">
+    <div class="search-wrap" data-search-ui="v41">
+      <div class="search-box-wrap" data-search-ui="v41">
         <div class="search-box">
           <span class="search-icon">🔍</span>
-          <input type="text" id="searchInput" placeholder="銘柄コード・名称 例: 7203" maxlength="20" autocomplete="off">
+          <input type="text" id="searchInput" placeholder="銘柄コード・会社名 例: 285A / キオクシア / 7203" maxlength="40" autocomplete="off">
           <button type="button" class="search-btn" id="searchBtn">検索</button>
         </div>
         <div class="search-suggest" id="searchSuggest"></div>
@@ -187,9 +187,10 @@
     </a>
   </nav>
 
-  <script src="/static/watchlist.js"></script>
-  <script src="/static/ipo.js"></script>
-  <script src="/static/script.js"></script>
+  <script src="/static/watchlist.js?v=41"></script>
+  <script src="/static/theme.js?v=41"></script>
+  <script src="/static/ipo.js?v=41"></script>
+  <script src="/static/script.js?v=41"></script>
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       initIndex();
@@ -202,6 +203,7 @@
     let notifLoaded = false;
     let currentMainTab = 'home';
     let activeSubPanel = null;
+    window.activeSubPanel = null;
     let homeMarketBarMounted = false;
 
     const HOME_MARKET_BAR_HTML =
@@ -286,15 +288,95 @@
       return `更新 ${data.updated}`;
     }
 
-    function initIndex() {
-      const input = document.getElementById('searchInput');
-      const btn = document.getElementById('searchBtn');
+    const THEME_ID_BY_NAME = {
+      '半導体': 'semiconductor', '防衛': 'defense', '商社': 'trading', '銀行': 'bank',
+      '不動産': 'realestate', '小売': 'retail', 'AI': 'ai', '電線': 'wire',
+      '資源': 'resources', '量子': 'quantum', '宇宙': 'space', '防災': 'disaster',
+    };
 
-      input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') doSearch();
+    function resolveThemeId(theme) {
+      if (!theme) return '';
+      if (theme.id) return theme.id;
+      return THEME_ID_BY_NAME[theme.name] || '';
+    }
+
+    function renderThemeRelatedChips(related) {
+      return (related || []).map((item) => {
+        const sym = typeof item === 'object' ? item.symbol : item;
+        const name = typeof item === 'object' ? (item.name || '') : '';
+        const href = `/stock/${encodeURIComponent(sym)}`;
+        return `
+          <a href="${escapeHtml(href)}" class="theme-stock-chip" data-symbol="${escapeHtml(sym)}">
+            <span class="theme-chip-code">${escapeHtml(sym)}</span>
+            ${name ? `<span class="theme-chip-name">${escapeHtml(name)}</span>` : ''}
+          </a>`;
+      }).join('');
+    }
+
+    function themeCardHtml(t, opts = {}) {
+      const themeId = resolveThemeId(t);
+      const silent = !!opts.silent;
+      const premium = opts.premium !== false;
+      const detail = t.reason || t.detail || '';
+      const cta = opts.cta || '関連銘柄を見る →';
+      return `
+        <div role="button" tabindex="0" class="theme-card${premium ? ' card-premium' : ''} ${escapeHtml(t.color)}${silent ? '' : ' fade-in'}"
+          data-theme-id="${escapeHtml(themeId)}" data-theme-name="${escapeHtml(t.name)}" aria-label="${escapeHtml(t.name)}テーマの関連銘柄">
+          <div class="theme-name">${escapeHtml(t.name)}</div>
+          <div class="theme-trend">${escapeHtml(t.trend)}</div>
+          <div class="${opts.detailClass || 'theme-reason'}">${escapeHtml(detail)}</div>
+          <div class="theme-related">
+            ${opts.hideRelLabel ? '' : '<span class="theme-rel-label">関連:</span>'}
+            ${renderThemeRelatedChips(t.related)}
+          </div>
+          <span class="theme-card-cta">${escapeHtml(cta)}</span>
+        </div>`;
+    }
+
+    function handleThemeCardActivate(card) {
+      if (!card) return;
+      const themeId = card.dataset.themeId || THEME_ID_BY_NAME[card.dataset.themeName] || '';
+      if (themeId) {
+        openThemePanel(themeId);
+      } else {
+        showToast('テーマ情報を取得できませんでした');
+      }
+    }
+
+    function bindThemeInteractionRoot(root) {
+      if (!root || root.dataset.themeBound === '1') return;
+      root.dataset.themeBound = '1';
+      root.addEventListener('click', (e) => {
+        const chip = e.target.closest('.theme-stock-chip[data-symbol]');
+        if (chip) {
+          e.preventDefault();
+          e.stopPropagation();
+          goToStock(chip.dataset.symbol);
+          return;
+        }
+        const card = e.target.closest('.theme-card[data-theme-id], .theme-card[data-theme-name]');
+        if (!card) return;
+        e.preventDefault();
+        handleThemeCardActivate(card);
       });
-      btn.addEventListener('click', doSearch);
+      root.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        const card = e.target.closest('.theme-card[data-theme-id], .theme-card[data-theme-name]');
+        if (!card) return;
+        e.preventDefault();
+        handleThemeCardActivate(card);
+      });
+    }
 
+    function setupThemeInteractions() {
+      bindThemeInteractionRoot(document.getElementById('marketThemes'));
+    }
+
+    function setupSubPanelThemeInteractions() {
+      bindThemeInteractionRoot(document.getElementById('subPanelHost'));
+    }
+
+    function initIndex() {
       document.querySelectorAll('.qs-chip').forEach((chip) => {
         chip.addEventListener('click', () => goToStock(chip.dataset.symbol));
       });
@@ -330,6 +412,8 @@
 
       WatchlistUI.init();
       updateWatchlistBadge();
+      setupThemeInteractions();
+      setupSubPanelThemeInteractions();
       setupHomeLazyLoad();
       initIndexAutoRefresh();
 
@@ -571,6 +655,7 @@
 
       closeSubPanel(false);
       activeSubPanel = name;
+      window.activeSubPanel = name;
       panelLoaded[name] = false;
       panelLoading[name] = false;
 
@@ -597,10 +682,14 @@
 
     function closeSubPanel(resetNav) {
       const host = document.getElementById('subPanelHost');
+      if (activeSubPanel === 'theme') {
+        window.ThemeUI?.mounted && (window.ThemeUI.mounted = false);
+      }
       if (activeSubPanel) {
         panelLoaded[activeSubPanel] = false;
         panelLoading[activeSubPanel] = false;
         activeSubPanel = null;
+        window.activeSubPanel = null;
       }
       host.innerHTML = '';
       host.classList.remove('is-open');
@@ -628,22 +717,24 @@
       loadNotifications();
     }
 
-    function doSearch() {
-      const val = document.getElementById('searchInput').value.trim();
-      const code = val.match(/\d{4}/)?.[0] || val;
-      if (/^\d{4}$/.test(code)) {
-        saveSearchHistory(code);
-        goToStock(code);
-      } else {
-        showToast('4桁の銘柄コードを入力してください');
-      }
-    }
-    window.doSearch = doSearch;
-
     function goToStock(symbol) {
-      window.location.href = `/stock/${symbol}`;
+      window.location.href = `/stock/${encodeURIComponent(symbol)}`;
     }
     window.goToStock = goToStock;
+    window.openThemePanel = openThemePanel;
+
+    function openThemePanel(themeId) {
+      if (!themeId) {
+        showToast('テーマが見つかりません');
+        return;
+      }
+      if (!window.ThemeUI) {
+        showToast('テーマ画面を読み込めません。ページを再読み込みしてください');
+        return;
+      }
+      closeSubPanel(false);
+      window.ThemeUI.open(themeId);
+    }
 
     function switchTab(name, opts) {
       if (name !== 'home' && name !== 'watchlist' && name !== 'ranking' && name !== 'ipo') return;
@@ -753,27 +844,9 @@
 
         themesEl.innerHTML = `
           <div class="theme-grid">
-            ${data.themes.map((t) => `
-              <div class="theme-card card-premium ${escapeHtml(t.color)}${silent ? '' : ' fade-in'}">
-                <div class="theme-name">${escapeHtml(t.name)}</div>
-                <div class="theme-trend">${escapeHtml(t.trend)}</div>
-                <div class="theme-reason">${escapeHtml(t.reason || t.detail)}</div>
-                <div class="theme-related">
-                  <span class="theme-rel-label">関連:</span>
-                  ${(t.related || []).map((s) => `
-                    <button type="button" class="theme-stock-chip" data-symbol="${escapeHtml(s)}">${escapeHtml(s)}</button>
-                  `).join('')}
-                </div>
-              </div>
-            `).join('')}
+            ${data.themes.map((t) => themeCardHtml(t, { silent })).join('')}
           </div>
         `;
-        themesEl.querySelectorAll('.theme-stock-chip').forEach((btn) => {
-          btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            goToStock(btn.dataset.symbol);
-          });
-        });
 
         aiCard.innerHTML = `
           <div class="ai-summary-header">
@@ -820,14 +893,13 @@
             </div>
             <div class="ai-summary-text">${escapeHtml(data.summary)}</div>
           </div>
-          <div class="theme-grid mt-16">
-            ${data.themes.map((t) => `
-              <div class="theme-card ${escapeHtml(t.color)}">
-                <div class="theme-name">${escapeHtml(t.name)}</div>
-                <div class="theme-trend">${escapeHtml(t.trend)}</div>
-                <div class="theme-detail">${escapeHtml(t.detail)}</div>
-              </div>
-            `).join('')}
+          <div class="theme-grid mt-16" id="marketAiThemes">
+            ${data.themes.map((t) => themeCardHtml(t, {
+              premium: false,
+              hideRelLabel: true,
+              detailClass: 'theme-detail',
+              cta: '関連銘柄 →',
+            })).join('')}
           </div>
         `;
         resetAutoRetry('marketAi');
@@ -1033,5 +1105,7 @@
       document.getElementById('notifOverlay').classList.remove('show');
     }
   </script>
+  <!-- search-v41: 285A / 会社名検索（旧4桁制限を上書き） -->
+  <script src="/static/search.js?v=41"></script>
 </body>
 </html>

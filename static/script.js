@@ -44,7 +44,6 @@ function initThemeToggle() {
 document.addEventListener('DOMContentLoaded', () => {
   initThemeToggle();
   initPriceAlerts();
-  initSearchUX();
   initAlertToggleUI();
   initAppSplash();
   initPwaInstall();
@@ -360,75 +359,7 @@ function saveSearchHistory(code) {
   localStorage.setItem('searchHistory', JSON.stringify(next));
 }
 
-function renderSearchHistory(container) {
-  if (!container) return;
-  const hist = JSON.parse(localStorage.getItem('searchHistory') || '[]');
-  if (!hist.length) {
-    container.style.display = 'none';
-    return;
-  }
-  container.style.display = 'block';
-  container.innerHTML = '<div class="search-hist-label">検索履歴</div>' +
-    hist.map((c) => `<button type="button" class="search-hist-chip" data-code="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join('');
-  container.querySelectorAll('.search-hist-chip').forEach((chip) => {
-    chip.addEventListener('click', () => {
-      const input = document.getElementById('searchInput');
-      if (input) input.value = chip.dataset.code;
-      if (typeof window.goToStock === 'function') window.goToStock(chip.dataset.code);
-    });
-  });
-}
-
-let searchDebounce = null;
-
-function initSearchUX() {
-  const input = document.getElementById('searchInput');
-  const suggest = document.getElementById('searchSuggest');
-  const histBox = document.getElementById('searchHistory');
-  if (!input) return;
-
-  renderSearchHistory(histBox);
-
-  input.addEventListener('input', () => {
-    const q = input.value.trim();
-    clearTimeout(searchDebounce);
-    if (!suggest) return;
-    if (q.length < 1) {
-      suggest.innerHTML = '';
-      suggest.style.display = 'none';
-      return;
-    }
-    searchDebounce = setTimeout(async () => {
-      try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
-        const json = await res.json();
-        const list = json.results || [];
-        if (!list.length) {
-          suggest.style.display = 'none';
-          return;
-        }
-        suggest.style.display = 'block';
-        suggest.innerHTML = list.map((r) => `
-          <button type="button" class="suggest-item" data-code="${escapeHtml(r.symbol)}">
-            <span class="suggest-code">${escapeHtml(r.symbol)}</span>
-            <span class="suggest-name">${escapeHtml(r.name)}</span>
-          </button>
-        `).join('');
-        suggest.querySelectorAll('.suggest-item').forEach((btn) => {
-          btn.addEventListener('click', () => {
-            input.value = btn.dataset.code;
-            suggest.style.display = 'none';
-            if (typeof window.doSearch === 'function') window.doSearch();
-          });
-        });
-      } catch {
-        suggest.style.display = 'none';
-      }
-    }, 200);
-  });
-
-  input.addEventListener('focus', () => renderSearchHistory(histBox));
-}
+window.saveSearchHistory = saveSearchHistory;
 
 let installUiReady = false;
 let deferredInstallPrompt = null;
