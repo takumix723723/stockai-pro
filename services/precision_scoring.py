@@ -198,6 +198,15 @@ def _simple_backtest(hist, vol_ratio: float | None) -> dict:
     return out
 
 
+CONDITION_EV_LABELS = {
+    "ma5_up": "5分足上昇",
+    "ma15_up": "15分足上昇",
+    "volume_surge": "出来高急増",
+    "rsi_rebound": "RSI反発",
+    "surge_chase": "急騰追随",
+}
+
+
 def _learning_theme_win_adj(themes: list[str], hints: dict | None) -> tuple[float, list[str]]:
     adj = 0.0
     notes: list[str] = []
@@ -205,18 +214,87 @@ def _learning_theme_win_adj(themes: list[str], hints: dict | None) -> tuple[floa
         return adj, notes
     for t in hints.get("boost_themes") or []:
         if any(t in th or th in t for th in themes):
-            adj += 6
-            notes.append(f"{t}テーマの過去勝率が高い")
+            adj += 4
+            notes.append(f"{t}テーマの過去成績が良好")
     for t in hints.get("penalize_themes") or []:
         if any(t in th or th in t for th in themes):
-            adj -= 8
-            notes.append(f"{t}テーマの過去勝率が低い")
-    if hints.get("penalize_patterns") and "surge_chase" in (hints.get("penalize_patterns") or []):
-        adj -= 5
+            adj -= 5
+            notes.append(f"{t}テーマの過去成績が低い")
+    return adj, notes
+
+
+def _learning_ev_adj(
+    signals: dict,
+    themes: list[str],
+    hints: dict | None,
+) -> tuple[float, list[str]]:
+    """条件別期待値ベースの学習加点・減点（勝率のみより優先）"""
+    adj = 0.0
+    notes: list[str] = []
+    if not hints:
+        return adj, notes
+
+    ev_map = hints.get("condition_ev") or {}
+
+    for key, label in CONDITION_EV_LABELS.items():
+        if not signals.get(key):
+            continue
+        row = ev_map.get(key) or {}
+        if (row.get("count") or 0) < 2:
+            continue
+        ev_pct = row.get("expected_value_pct")
+        if ev_pct is None:
+            continue
+        if ev_pct >= 1.0:
+            boost = min(8.0, ev_pct * 2.2)
+            adj += boost
+            notes.append(f"{label}の過去期待値+{ev_pct}%")
+        elif ev_pct >= 0.3:
+            adj += 2.0
+            notes.append(f"{label}の期待値はプラス圏")
+        elif ev_pct <= -1.0:
+            penalty = min(12.0, abs(ev_pct) * 2.8)
+            adj -= penalty
+            notes.append(f"{label}の過去期待値{ev_pct}%")
+        elif ev_pct <= -0.3:
+            adj -= 5.0
+            notes.append(f"{label}の期待値はマイナス圏")
+
+    for theme in themes:
+        row = ev_map.get(f"theme_{theme}") or ev_map.get(theme) or {}
+        if (row.get("count") or 0) < 2:
+            continue
+        ev_pct = row.get("expected_value_pct")
+        if ev_pct is None:
+            continue
+        if ev_pct >= 1.0:
+            adj += min(7.0, ev_pct * 2.0)
+            notes.append(f"{theme}テーマの過去期待値+{ev_pct}%")
+        elif ev_pct >= 0.3:
+            adj += 2.0
+        elif ev_pct <= -0.8:
+            adj -= min(10.0, abs(ev_pct) * 2.5)
+            notes.append(f"{theme}テーマの過去期待値{ev_pct}%")
+        elif ev_pct <= -0.3:
+            adj -= 4.0
+
     for pat in hints.get("boost_patterns") or []:
-        if pat == "volume_surge":
-            adj += 4
-            notes.append("出来高急増＋上昇の過去成績が良好")
+        if pat in signals and signals.get(pat):
+            if pat == "volume_surge":
+                adj += 5
+            elif pat == "ma5_up":
+                adj += 4
+            elif pat in ("ma15_up", "rsi_rebound"):
+                adj += 3
+
+    if "surge_chase" in (hints.get("penalize_patterns") or []) and signals.get("surge_chase"):
+        adj -= 7
+    for pat in hints.get("penalize_patterns") or []:
+        if pat != "surge_chase" and signals.get(pat):
+            adj -= 4
+
+    legacy_adj, _ = _learning_theme_win_adj(themes, hints)
+    adj += legacy_adj * 0.35
     return adj, notes
 
 
@@ -281,7 +359,16 @@ def evaluate_precision(
     if ai_total >= 58:
         positives.append(f"AIスコア {ai_total}")
 
-    learn_adj, learn_notes = _learning_theme_win_adj(themes, learning_hints)
+    signals = {
+        "ma5_up": ctx.ma5_up,
+        "ma15_up": ctx.ma15_up,
+        "volume_surge": (ctx.vol_ratio or 0) >= 1.5,
+        "rsi_rebound": ctx.rsi is not None and ctx.rsi < 40,
+        "surge_chase": ctx.change_pct is not None and ctx.change_pct >= 3,
+        "daily_trend_up": ctx.ma20_up,
+    }
+
+    learn_adj, learn_notes = _learning_ev_adj(signals, themes, learning_hints)
     positives.extend(learn_notes)
 
     positive_count = len(positives)
@@ -320,15 +407,6 @@ def evaluate_precision(
         + expected_value / 5000
         + learn_adj
     )
-
-    signals = {
-        "ma5_up": ctx.ma5_up,
-        "ma15_up": ctx.ma15_up,
-        "volume_surge": (ctx.vol_ratio or 0) >= 1.5,
-        "rsi_rebound": ctx.rsi is not None and ctx.rsi < 40,
-        "surge_chase": ctx.change_pct is not None and ctx.change_pct >= 3,
-        "daily_trend_up": ctx.ma20_up,
-    }
 
     if mode == "daytrade":
         passed = confidence in ("A", "B") and expected_value > 0

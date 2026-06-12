@@ -331,6 +331,7 @@
 
   function hasLearningHints(hints) {
     if (!hints) return false;
+    if (hints.condition_ev && Object.keys(hints.condition_ev).length) return true;
     return Object.keys(hints).some((k) => {
       const v = hints[k];
       return (Array.isArray(v) && v.length) || v === true;

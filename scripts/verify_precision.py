@@ -45,10 +45,19 @@ def main() -> int:
         else:
             ok(f"anchor {sym} filtered or skip", True, "excluded by precision (OK)")
 
-    hints = {"boost_themes": ["半導体"], "penalize_patterns": ["surge_chase"]}
+    hints = {
+        "boost_themes": ["半導体"],
+        "penalize_patterns": ["surge_chase"],
+        "condition_ev": {
+            "volume_surge": {"count": 5, "expected_value_pct": 3.1, "win_rate": 72},
+            "surge_chase": {"count": 6, "expected_value_pct": -2.2, "win_rate": 38},
+        },
+        "boost_patterns": ["volume_surge"],
+    }
     r2 = client.post("/api/trade_scenarios", json={"learning_hints": hints})
     d2 = r2.get_json()
     ok("POST with learning_hints", d2.get("status") == "ok")
+    ok("POST with condition_ev", isinstance(hints.get("condition_ev"), dict))
 
     passed = sum(results)
     print(f"\n{passed}/{len(results)} passed")

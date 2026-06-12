@@ -60,8 +60,8 @@
     return h > 15 || (h === 15 && m >= 30);
   }
 
-  const THEME_BUCKETS = ['半導体', '商社', '銀行', '防衛', 'AI'];
-  const CONDITION_DEFS = [
+  const THEME_BUCKETS = global.ConditionEV?.THEME_BUCKETS || ['半導体', '商社', '銀行', '防衛', 'AI'];
+  const CONDITION_DEFS = global.ConditionEV?.CONDITION_DEFS || [
     { key: 'ma5_up', label: '5分足上昇' },
     { key: 'ma15_up', label: '15分足上昇' },
     { key: 'volume_surge', label: '出来高急増' },
@@ -182,15 +182,30 @@
       penalize_themes: [],
       penalize_symbols: [],
       boost_patterns: [],
+      penalize_patterns: [],
+      condition_ev: {},
       extend_target: false,
     };
+
+    if (global.ConditionEV) {
+      const evStats = getConditionEvStats();
+      const evHints = global.ConditionEV.buildLearningHintsFromEV(evStats);
+      hints.condition_ev = evHints.condition_ev;
+      hints.boost_patterns = [...evHints.boost_patterns];
+      hints.penalize_patterns = [...evHints.penalize_patterns];
+      hints.boost_themes = [...evHints.boost_themes];
+      hints.penalize_themes = [...evHints.penalize_themes];
+    }
     const logs = store.learning_logs || [];
     const records = store.daily_records || [];
+
+    const boostSet = new Set(hints.boost_themes);
+    const penalizeSet = new Set(hints.penalize_themes);
 
     logs.slice(0, 7).forEach((log) => {
       if ((log.total_pnl || 0) > 0 && log.good_points) {
         ['半導体', 'AI', '防衛', '商社', '銀行', '量子', '宇宙'].forEach((t) => {
-          if (log.good_points.includes(t) && !hints.boost_themes.includes(t)) hints.boost_themes.push(t);
+          if (log.good_points.includes(t)) boostSet.add(t);
         });
       }
       if ((log.total_pnl || 0) < 0 && log.bad_points) {
@@ -202,21 +217,19 @@
       (rec.trades || []).forEach((t) => {
         if (t.status === 'stop_hit') {
           if (!hints.penalize_symbols.includes(t.symbol)) hints.penalize_symbols.push(t.symbol);
-          (t.themes || []).forEach((th) => {
-            if (!hints.penalize_themes.includes(th)) hints.penalize_themes.push(th);
-          });
+          (t.themes || []).forEach((th) => penalizeSet.add(th));
         }
-        if (t.status === 'target_hit' && (t.themes || []).length) {
-          t.themes.forEach((th) => {
-            if (!hints.boost_themes.includes(th)) hints.boost_themes.push(th);
-          });
+        if (t.status === 'target_hit') {
+          (t.themes || []).forEach((th) => boostSet.add(th));
         }
       });
     });
 
-    hints.boost_themes = hints.boost_themes.slice(0, 4);
-    hints.penalize_themes = hints.penalize_themes.slice(0, 3);
+    hints.boost_themes = [...boostSet].slice(0, 4);
+    hints.penalize_themes = [...penalizeSet].slice(0, 3);
     hints.penalize_symbols = hints.penalize_symbols.slice(0, 5);
+    hints.boost_patterns = [...new Set(hints.boost_patterns)].slice(0, 4);
+    hints.penalize_patterns = [...new Set(hints.penalize_patterns)].slice(0, 4);
     return hints;
   }
 
@@ -274,6 +287,7 @@
   }
 
   function inferSignals(trade) {
+    if (global.ConditionEV?.inferSignals) return global.ConditionEV.inferSignals(trade);
     const s = trade.signals || {};
     const r = trade.reason || '';
     return {
@@ -283,6 +297,12 @@
       rsi_rebound: !!(s.rsi_rebound || r.includes('反発') || r.includes('RSI')),
       surge_chase: !!(s.surge_chase || (trade.change_pct != null && trade.change_pct >= 3)),
     };
+  }
+
+  function getConditionEvStats() {
+    if (!global.ConditionEV) return { byKey: {}, rows: [], ranked: [] };
+    const trades = global.ConditionEV.collectAllTrades();
+    return global.ConditionEV.computeAllConditionStats(trades);
   }
 
   function computePeriodStats(trades) {
@@ -351,31 +371,13 @@
   }
 
   function generateLearnedInsights(store) {
+    if (global.ConditionEV) {
+      const evStats = getConditionEvStats();
+      return global.ConditionEV.insightBulletsFromEV(evStats);
+    }
     const trades = collectResolvedTrades(store);
-    const bullets = [];
     if (!trades.length) return ['取引履歴が増えると、AIの学習内容がここに表示されます'];
-
-    THEME_BUCKETS.forEach((theme) => {
-      const wr = bucketWinRate(trades, (t) => (t.themes || []).some((th) => th.includes(theme) || theme.includes(th)));
-      if (wr == null) return;
-      if (wr >= 55) bullets.push(`${theme}テーマの勝率が高い（${wr}%）`);
-      else if (wr < 40) bullets.push(`${theme}株のデイトレ勝率は低い（${wr}%）`);
-    });
-
-    const surgeWr = bucketWinRate(trades, (t) => inferSignals(t).surge_chase);
-    if (surgeWr != null && surgeWr < 45) bullets.push('急騰銘柄の飛び乗りは成績が悪い');
-
-    const volWr = bucketWinRate(trades, (t) => inferSignals(t).volume_surge);
-    if (volWr != null && volWr >= 55) bullets.push('寄り付き後の出来高増加は有効');
-
-    const ma5Wr = bucketWinRate(trades, (t) => inferSignals(t).ma5_up);
-    if (ma5Wr != null && ma5Wr >= 55) bullets.push('5分足の上昇トレンド一致は有効');
-
-    const rsiWr = bucketWinRate(trades, (t) => inferSignals(t).rsi_rebound);
-    if (rsiWr != null && rsiWr >= 50) bullets.push('RSI反発からのエントリーは安定');
-
-    if (!bullets.length) bullets.push('引き続き条件別の成績を蓄積して学習精度を高めます');
-    return bullets.slice(0, 6);
+    return ['引き続き条件別期待値を蓄積して学習精度を高めます'];
   }
 
   function buildSelfEvaluation(trades, totalPnl) {
@@ -502,6 +504,14 @@
       return statBarHtml(def.label, wr, matched.length);
     }).join('');
 
+    const evStats = getConditionEvStats();
+    const evCards = evStats.rows.map((row) =>
+      global.ConditionEV ? global.ConditionEV.evCardHtml(row) : ''
+    ).join('');
+    const evRanking = global.ConditionEV
+      ? global.ConditionEV.evRankingHtml(evStats.ranked)
+      : '<p class="dt-empty">データなし</p>';
+
     return `
       <div class="dt-growth-hero card-premium">
         <h3 class="dt-growth-title">AI成長レポート</h3>
@@ -530,8 +540,19 @@
       </div>
 
       <div class="dt-growth-section card-premium">
-        <h4 class="dt-growth-section-title">条件別成績</h4>
+        <h4 class="dt-growth-section-title">条件別成績（勝率）</h4>
         ${condBars || '<p class="dt-empty">データなし</p>'}
+      </div>
+
+      <div class="dt-growth-section card-premium">
+        <h4 class="dt-growth-section-title">条件別期待値分析</h4>
+        <p class="dt-ev-sub">勝率だけでなく期待値（平均利益×勝率＋平均損失×負け率）で学習します</p>
+        ${evCards || '<p class="dt-empty">データなし</p>'}
+      </div>
+
+      <div class="dt-growth-section card-premium">
+        <h4 class="dt-growth-section-title">期待値ランキング</h4>
+        ${evRanking}
       </div>
 
       ${latestSelf ? `
@@ -744,6 +765,14 @@
 
     getStore() {
       return loadStore();
+    },
+
+    extractLearningHints(store) {
+      return extractLearningHints(store || loadStore());
+    },
+
+    getConditionEvStats() {
+      return getConditionEvStats();
     },
 
     async fetchDaily(hints) {
