@@ -1,5 +1,5 @@
 /* StockAI Pro Service Worker v4 — 軽量・ネットワーク優先 */
-const CACHE_VERSION = 'stockai-pro-v46';
+const CACHE_VERSION = 'stockai-pro-v47';
 const STATIC_CACHE = `${CACHE_VERSION}-core`;
 
 const PRECACHE = [

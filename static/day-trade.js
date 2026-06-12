@@ -1,12 +1,12 @@
 /**
  * AI仮想デイトレ検証 — 実注文なし・シミュレーション専用
  *
- * localStorage スキーマ v1:
+ * localStorage スキーマ v2:
  * {
- *   version: 1,
- *   today: { date, trades[], finalized },
- *   daily_records: [{ date, total_pnl, trade_count, win_count, loss_count, win_rate, max_profit, max_loss, trades, learning }],
- *   learning_logs: [{ date, total_pnl, good_points, bad_points, improvements }]
+ *   version: 2,
+ *   today, daily_records, learning_logs,
+ *   growth_snapshots: [{ date, month_key, win_rate, avg_profit, avg_loss, risk_reward, month_pnl }],
+ *   self_evaluations: [{ date, good, bad, tomorrow, text }]
  * }
  */
 (function (global) {
@@ -60,16 +60,27 @@
     return h > 15 || (h === 15 && m >= 30);
   }
 
+  const THEME_BUCKETS = ['半導体', '商社', '銀行', '防衛', 'AI'];
+  const CONDITION_DEFS = [
+    { key: 'ma5_up', label: '5分足上昇' },
+    { key: 'ma15_up', label: '15分足上昇' },
+    { key: 'volume_surge', label: '出来高急増' },
+    { key: 'rsi_rebound', label: 'RSI反発' },
+    { key: 'surge_chase', label: '急騰追随' },
+  ];
+
   function loadStore() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      const data = raw ? JSON.parse(raw) : { version: 1, today: null, daily_records: [], learning_logs: [] };
-      data.version = 1;
+      const data = raw ? JSON.parse(raw) : { version: 2, today: null, daily_records: [], learning_logs: [], growth_snapshots: [], self_evaluations: [] };
+      data.version = 2;
       if (!data.daily_records) data.daily_records = [];
       if (!data.learning_logs) data.learning_logs = [];
+      if (!data.growth_snapshots) data.growth_snapshots = [];
+      if (!data.self_evaluations) data.self_evaluations = [];
       return data;
     } catch {
-      return { version: 1, today: null, daily_records: [], learning_logs: [] };
+      return { version: 2, today: null, daily_records: [], learning_logs: [], growth_snapshots: [], self_evaluations: [] };
     }
   }
 
@@ -215,15 +226,336 @@
     const wins = trades.filter((t) => (t.final_pnl || 0) > 0);
     const losses = trades.filter((t) => (t.final_pnl || 0) < 0);
     const judged = wins.length + losses.length;
+    const avgProfit = wins.length ? Math.round(wins.reduce((s, t) => s + (t.final_pnl || 0), 0) / wins.length) : null;
+    const avgLoss = losses.length ? Math.round(losses.reduce((s, t) => s + (t.final_pnl || 0), 0) / losses.length) : null;
+    let riskReward = null;
+    if (avgProfit != null && avgLoss != null && avgLoss < 0) {
+      riskReward = Math.round((avgProfit / Math.abs(avgLoss)) * 100) / 100;
+    }
     return {
       total_pnl: total,
       trade_count: trades.length,
       win_count: wins.length,
       loss_count: losses.length,
       win_rate: judged ? Math.round((wins.length / judged) * 1000) / 10 : null,
+      avg_profit: avgProfit,
+      avg_loss: avgLoss,
+      risk_reward: riskReward,
       max_profit: wins.length ? Math.max(...wins.map((t) => t.final_pnl || 0)) : null,
       max_loss: losses.length ? Math.min(...losses.map((t) => t.final_pnl || 0)) : null,
     };
+  }
+
+  function monthKeyFromDate(dateStr) {
+    if (!dateStr) return '';
+    return dateStr.slice(0, 7);
+  }
+
+  function prevMonthKey(key) {
+    const [y, m] = key.split('-').map(Number);
+    const d = new Date(y, m - 2, 1);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  }
+
+  function currentMonthKey() {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  }
+
+  function collectResolvedTrades(store) {
+    const out = [];
+    (store.daily_records || []).forEach((rec) => {
+      (rec.trades || []).forEach((t) => {
+        if (t.final_pnl == null && !TERMINAL.has(t.status)) return;
+        out.push({ ...t, record_date: rec.date });
+      });
+    });
+    return out;
+  }
+
+  function inferSignals(trade) {
+    const s = trade.signals || {};
+    const r = trade.reason || '';
+    return {
+      ma5_up: !!(s.ma5_up || r.includes('5分足')),
+      ma15_up: !!(s.ma15_up || r.includes('15分足')),
+      volume_surge: !!(s.volume_surge || r.includes('出来高')),
+      rsi_rebound: !!(s.rsi_rebound || r.includes('反発') || r.includes('RSI')),
+      surge_chase: !!(s.surge_chase || (trade.change_pct != null && trade.change_pct >= 3)),
+    };
+  }
+
+  function computePeriodStats(trades) {
+    const wins = trades.filter((t) => (t.final_pnl || 0) > 0);
+    const losses = trades.filter((t) => (t.final_pnl || 0) < 0);
+    const judged = wins.length + losses.length;
+    const avgProfit = wins.length ? Math.round(wins.reduce((s, t) => s + (t.final_pnl || 0), 0) / wins.length) : null;
+    const avgLoss = losses.length ? Math.round(losses.reduce((s, t) => s + (t.final_pnl || 0), 0) / losses.length) : null;
+    let riskReward = null;
+    if (avgProfit != null && avgLoss != null && avgLoss < 0) {
+      riskReward = Math.round((avgProfit / Math.abs(avgLoss)) * 100) / 100;
+    }
+    const rrTrades = trades.filter((t) => t.risk_reward != null);
+    const avgPlannedRr = rrTrades.length
+      ? Math.round(rrTrades.reduce((s, t) => s + t.risk_reward, 0) / rrTrades.length * 100) / 100
+      : riskReward;
+    return {
+      trade_count: trades.length,
+      win_rate: judged ? Math.round((wins.length / judged) * 1000) / 10 : null,
+      avg_profit: avgProfit,
+      avg_loss: avgLoss,
+      risk_reward: avgPlannedRr ?? riskReward,
+      total_pnl: trades.reduce((s, t) => s + (t.final_pnl || 0), 0),
+    };
+  }
+
+  function compareMetric(prev, curr, higherIsBetter, fmtFn) {
+    if (curr == null && prev == null) return { prev: '—', curr: '—', delta: '', improved: null };
+    const p = prev ?? 0;
+    const c = curr ?? 0;
+    const diff = c - p;
+    const improved = higherIsBetter ? diff > 0 : diff < 0;
+    const flat = Math.abs(diff) < (higherIsBetter && String(fmtFn).includes('Pct') ? 0.05 : 1);
+    let delta = '';
+    if (!flat && prev != null && curr != null) {
+      if (higherIsBetter) {
+        delta = diff >= 0 ? `(+${fmtFn(diff)}改善)` : `(${fmtFn(diff)}悪化)`;
+      } else {
+        delta = diff <= 0 ? `(${fmtFn(Math.abs(diff))}改善)` : `(${fmtFn(diff)}悪化)`;
+      }
+    }
+    return {
+      prev: prev != null ? fmtFn(prev) : '—',
+      curr: curr != null ? fmtFn(curr) : '—',
+      delta,
+      improved: flat ? null : improved,
+    };
+  }
+
+  function overallVerdict(comparisons) {
+    const scored = comparisons.filter((c) => c.improved != null);
+    if (!scored.length) return { label: 'データ蓄積中', cls: 'neutral' };
+    const wins = scored.filter((c) => c.improved).length;
+    const ratio = wins / scored.length;
+    if (ratio >= 0.6) return { label: '改善中', cls: 'up' };
+    if (ratio <= 0.35) return { label: '要改善', cls: 'down' };
+    return { label: '横ばい', cls: 'neutral' };
+  }
+
+  function bucketWinRate(trades, matchFn) {
+    const matched = trades.filter(matchFn);
+    if (!matched.length) return null;
+    const wins = matched.filter((t) => (t.final_pnl || 0) > 0).length;
+    const judged = matched.filter((t) => (t.final_pnl || 0) !== 0).length || matched.length;
+    return Math.round((wins / judged) * 1000) / 10;
+  }
+
+  function generateLearnedInsights(store) {
+    const trades = collectResolvedTrades(store);
+    const bullets = [];
+    if (!trades.length) return ['取引履歴が増えると、AIの学習内容がここに表示されます'];
+
+    THEME_BUCKETS.forEach((theme) => {
+      const wr = bucketWinRate(trades, (t) => (t.themes || []).some((th) => th.includes(theme) || theme.includes(th)));
+      if (wr == null) return;
+      if (wr >= 55) bullets.push(`${theme}テーマの勝率が高い（${wr}%）`);
+      else if (wr < 40) bullets.push(`${theme}株のデイトレ勝率は低い（${wr}%）`);
+    });
+
+    const surgeWr = bucketWinRate(trades, (t) => inferSignals(t).surge_chase);
+    if (surgeWr != null && surgeWr < 45) bullets.push('急騰銘柄の飛び乗りは成績が悪い');
+
+    const volWr = bucketWinRate(trades, (t) => inferSignals(t).volume_surge);
+    if (volWr != null && volWr >= 55) bullets.push('寄り付き後の出来高増加は有効');
+
+    const ma5Wr = bucketWinRate(trades, (t) => inferSignals(t).ma5_up);
+    if (ma5Wr != null && ma5Wr >= 55) bullets.push('5分足の上昇トレンド一致は有効');
+
+    const rsiWr = bucketWinRate(trades, (t) => inferSignals(t).rsi_rebound);
+    if (rsiWr != null && rsiWr >= 50) bullets.push('RSI反発からのエントリーは安定');
+
+    if (!bullets.length) bullets.push('引き続き条件別の成績を蓄積して学習精度を高めます');
+    return bullets.slice(0, 6);
+  }
+
+  function buildSelfEvaluation(trades, totalPnl) {
+    const wins = trades.filter((t) => (t.final_pnl || 0) > 0);
+    const losses = trades.filter((t) => (t.final_pnl || 0) < 0);
+    const stops = trades.filter((t) => t.status === 'stop_hit');
+    const winThemes = wins.flatMap((t) => t.themes || []).filter(Boolean);
+    const surgeLosses = losses.filter((t) => inferSignals(t).surge_chase);
+
+    const goodParts = [];
+    const badParts = [];
+    const tomorrowParts = [];
+
+    if (winThemes.length) {
+      goodParts.push(`${winThemes[0]}銘柄の選定は良好だった`);
+    } else if (wins.length) {
+      goodParts.push('エントリー後の上昇を捉えられた場面があった');
+    }
+    if (stops.length) {
+      badParts.push('損切りが増え、エントリーの厳選が必要だった');
+    }
+    if (surgeLosses.length) {
+      badParts.push('急騰銘柄への追随が早すぎて損切りが増えた');
+    }
+    if (!badParts.length && totalPnl < 0) {
+      badParts.push('全体としてマイナス — リスク管理の見直しが必要');
+    }
+    if (!goodParts.length) goodParts.push('損切りラインの遵守はできた');
+
+    const volWins = wins.filter((t) => inferSignals(t).volume_surge);
+    if (volWins.length) tomorrowParts.push('出来高継続性を重視する');
+    if (surgeLosses.length) tomorrowParts.push('急騰直後の飛び乗りは控える');
+    if (winThemes.length) tomorrowParts.push(`${winThemes[0]}テーマを優先する`);
+    if (!tomorrowParts.length) tomorrowParts.push('勝率の高い条件だけに絞ってエントリーする');
+
+    const good = goodParts.join('。') + '。';
+    const bad = badParts.join('。') + (badParts.length ? '。' : '');
+    const tomorrow = tomorrowParts.join('。') + '。';
+    const text = [good, bad, `明日は${tomorrow}`].filter(Boolean).join('\n');
+    return { good, bad, tomorrow, text };
+  }
+
+  function recordGrowthArtifacts(store, date, trades, summary) {
+    const monthKey = monthKeyFromDate(date);
+    const monthTrades = collectResolvedTrades(store).filter((t) => monthKeyFromDate(t.record_date) === monthKey);
+    const monthStats = computePeriodStats(monthTrades);
+    const snapshot = {
+      date,
+      month_key: monthKey,
+      win_rate: summary.win_rate,
+      avg_profit: summary.avg_profit,
+      avg_loss: summary.avg_loss,
+      risk_reward: summary.risk_reward,
+      month_pnl: monthStats.total_pnl,
+      trade_count: summary.trade_count,
+    };
+    store.growth_snapshots = [snapshot, ...(store.growth_snapshots || []).filter((s) => s.date !== date)];
+
+    const selfEval = buildSelfEvaluation(trades, summary.total_pnl);
+    store.self_evaluations = [
+      { date, ...selfEval },
+      ...(store.self_evaluations || []).filter((e) => e.date !== date),
+    ];
+    return store;
+  }
+
+  function growthCompareRow(label, cmp) {
+    const cls = cmp.improved == null ? '' : (cmp.improved ? 'up' : 'down');
+    return `
+      <div class="dt-growth-row">
+        <span class="dt-growth-label">${label}</span>
+        <div class="dt-growth-values">
+          <span class="dt-growth-prev">${cmp.prev}</span>
+          <span class="dt-growth-arrow">→</span>
+          <span class="dt-growth-curr ${cls}">${cmp.curr}</span>
+          ${cmp.delta ? `<span class="dt-growth-delta ${cls}">${cmp.delta}</span>` : ''}
+        </div>
+      </div>`;
+  }
+
+  function statBarHtml(label, wr, count) {
+    if (wr == null) return '';
+    const cls = wr >= 55 ? 'up' : (wr < 45 ? 'down' : 'neutral');
+    const width = Math.min(100, Math.max(4, wr));
+    return `
+      <div class="dt-stat-bar-row">
+        <div class="dt-stat-bar-head">
+          <span>${label}</span>
+          <span class="dt-stat-bar-pct ${cls}">${wr}%</span>
+        </div>
+        <div class="dt-stat-bar-track"><div class="dt-stat-bar-fill ${cls}" style="width:${width}%"></div></div>
+        <span class="dt-stat-bar-meta">${count}件</span>
+      </div>`;
+  }
+
+  function growthReportHtml(store) {
+    const allTrades = collectResolvedTrades(store);
+    const thisKey = currentMonthKey();
+    const lastKey = prevMonthKey(thisKey);
+    const thisTrades = allTrades.filter((t) => monthKeyFromDate(t.record_date) === thisKey);
+    const lastTrades = allTrades.filter((t) => monthKeyFromDate(t.record_date) === lastKey);
+    const thisStats = computePeriodStats(thisTrades);
+    const lastStats = computePeriodStats(lastTrades);
+
+    const cmpWin = compareMetric(lastStats.win_rate, thisStats.win_rate, true, (v) => v.toFixed(1) + '%');
+    const cmpProfit = compareMetric(lastStats.avg_profit, thisStats.avg_profit, true, (v) => fmtSignedYen(v));
+    const cmpLoss = compareMetric(lastStats.avg_loss, thisStats.avg_loss, true, (v) => fmtSignedYen(v));
+    const cmpRr = compareMetric(lastStats.risk_reward, thisStats.risk_reward, true, (v) => v.toFixed(2));
+    const cmpPnl = compareMetric(lastStats.total_pnl, thisStats.total_pnl, true, (v) => fmtSignedYen(v));
+    const verdict = overallVerdict([cmpWin, cmpProfit, cmpLoss, cmpRr, cmpPnl]);
+
+    const insights = generateLearnedInsights(store);
+    const latestSelf = (store.self_evaluations || [])[0];
+
+    const themeBars = THEME_BUCKETS.map((theme) => {
+      const matched = allTrades.filter((t) => (t.themes || []).some((th) => th.includes(theme) || theme.includes(th)));
+      const wr = bucketWinRate(allTrades, (t) => (t.themes || []).some((th) => th.includes(theme) || theme.includes(th)));
+      return statBarHtml(theme, wr, matched.length);
+    }).join('');
+
+    const condBars = CONDITION_DEFS.map((def) => {
+      const matched = allTrades.filter((t) => inferSignals(t)[def.key]);
+      const wr = bucketWinRate(allTrades, (t) => inferSignals(t)[def.key]);
+      return statBarHtml(def.label, wr, matched.length);
+    }).join('');
+
+    return `
+      <div class="dt-growth-hero card-premium">
+        <h3 class="dt-growth-title">AI成長レポート</h3>
+        <p class="dt-growth-sub">先月（${lastKey}）→ 今月（${thisKey}）</p>
+        ${growthCompareRow('勝率', cmpWin)}
+        ${growthCompareRow('平均利益', cmpProfit)}
+        ${growthCompareRow('平均損失', cmpLoss)}
+        ${growthCompareRow('リスクリワード', cmpRr)}
+        ${growthCompareRow('月間損益', cmpPnl)}
+        <div class="dt-growth-verdict">
+          <span>総合評価</span>
+          <strong class="dt-growth-verdict-val ${verdict.cls}">${verdict.label}</strong>
+        </div>
+      </div>
+
+      <div class="dt-growth-section card-premium">
+        <h4 class="dt-growth-section-title">最近学習した内容</h4>
+        <ul class="dt-insight-list">
+          ${insights.map((b) => `<li>${global.escapeHtml ? global.escapeHtml(b) : b}</li>`).join('')}
+        </ul>
+      </div>
+
+      <div class="dt-growth-section card-premium">
+        <h4 class="dt-growth-section-title">テーマ別勝率</h4>
+        ${themeBars || '<p class="dt-empty">データなし</p>'}
+      </div>
+
+      <div class="dt-growth-section card-premium">
+        <h4 class="dt-growth-section-title">条件別成績</h4>
+        ${condBars || '<p class="dt-empty">データなし</p>'}
+      </div>
+
+      ${latestSelf ? `
+      <div class="dt-growth-section card-premium dt-self-eval">
+        <h4 class="dt-growth-section-title">今日の自己評価 <span class="dt-self-date">${dateLabel(latestSelf.date)}</span></h4>
+        <p class="dt-self-text">${global.escapeHtml ? global.escapeHtml(latestSelf.text || '') : (latestSelf.text || '')}</p>
+      </div>` : '<p class="dt-empty">引け後にAI自己評価が記録されます</p>'}`;
+  }
+
+  function growthTeaserHtml(store) {
+    const allTrades = collectResolvedTrades(store);
+    if (!allTrades.length) return '';
+    const thisKey = currentMonthKey();
+    const lastKey = prevMonthKey(thisKey);
+    const thisStats = computePeriodStats(allTrades.filter((t) => monthKeyFromDate(t.record_date) === thisKey));
+    const lastStats = computePeriodStats(allTrades.filter((t) => monthKeyFromDate(t.record_date) === lastKey));
+    const cmpWin = compareMetric(lastStats.win_rate, thisStats.win_rate, true, (v) => v.toFixed(1) + '%');
+    const verdict = overallVerdict([cmpWin]);
+    return `
+      <div class="dt-growth-teaser card-premium" role="button" tabindex="0" id="dayTradeGrowthTeaserBtn">
+        <span class="dt-growth-teaser-label">AI成長レポート</span>
+        <span class="dt-growth-teaser-val ${verdict.cls}">${verdict.label}</span>
+        <span class="dt-growth-teaser-meta">勝率 ${cmpWin.prev} → ${cmpWin.curr}</span>
+      </div>`;
   }
 
   function panelTabsHtml(active) {
@@ -232,6 +564,7 @@
       `<button type="button" class="dt-tab${active === 'today' ? ' active' : ''}" data-dt-mode="today">今日の仮想デイトレ</button>` +
       `<button type="button" class="dt-tab${active === 'daily' ? ' active' : ''}" data-dt-mode="daily">日別成績</button>` +
       `<button type="button" class="dt-tab${active === 'learning' ? ' active' : ''}" data-dt-mode="learning">AI学習ログ</button>` +
+      `<button type="button" class="dt-tab${active === 'growth' ? ' active' : ''}" data-dt-mode="growth">AI成長レポート</button>` +
       '</div>'
     );
   }
@@ -481,6 +814,7 @@
         { date, ...learning },
         ...(store.learning_logs || []).filter((l) => l.date !== date),
       ];
+      store = recordGrowthArtifacts(store, date, trades, summary);
       store.today = { ...store.today, trades, finalized: true };
       saveStore(store);
       return store;
@@ -522,8 +856,14 @@
         store.today.trades.forEach((t) => {
           if (!quotes[t.symbol]) quotes[t.symbol] = { current: t.last_current };
         });
+        const teaser = growthTeaserHtml(store);
         host.innerHTML = homeTodayHtml(store, quotes)
+          + (teaser || '')
           + `<p class="dt-disclaimer">${global.escapeHtml ? global.escapeHtml(DayTrade.disclaimer) : DayTrade.disclaimer}</p>`;
+        document.getElementById('dayTradeGrowthTeaserBtn')?.addEventListener('click', () => {
+          if (global.openSubPanel) global.openSubPanel('daytrade');
+          setTimeout(() => DayTrade.loadPanel('dayTradeList', 'growth'), 400);
+        });
       } catch (e) {
         console.error(e);
         host.innerHTML = '<p class="dt-empty">AI仮想デイトレの読み込みに失敗しました</p>';
@@ -558,6 +898,12 @@
           DayTrade.bindPanelTabs(host);
           return;
         }
+        if (mode === 'growth') {
+          host.innerHTML = panelTabsHtml('growth') + growthReportHtml(store)
+            + `<p class="dt-disclaimer">${global.escapeHtml ? global.escapeHtml(DayTrade.disclaimer) : DayTrade.disclaimer}</p>`;
+          DayTrade.bindPanelTabs(host);
+          return;
+        }
         host.innerHTML = panelTabsHtml('learning') + learningLogsHtml(store.learning_logs || [])
           + `<p class="dt-disclaimer">${global.escapeHtml ? global.escapeHtml(DayTrade.disclaimer) : DayTrade.disclaimer}</p>`;
         DayTrade.bindPanelTabs(host);
@@ -575,6 +921,11 @@
         });
       });
     },
+
+    computePeriodStats,
+    generateLearnedInsights,
+    buildSelfEvaluation,
+    growthReportHtml,
   };
 
   global.DayTrade = DayTrade;

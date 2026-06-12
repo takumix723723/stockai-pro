@@ -38,8 +38,9 @@ def main() -> int:
 
     if trades:
         t0 = trades[0]
-        for k in ["symbol", "buy_price", "shares", "target_price", "stop_price", "reason", "entry_time"]:
+        for k in ["symbol", "buy_price", "shares", "target_price", "stop_price", "reason", "entry_time", "signals", "risk_reward"]:
             ok(f"field {k}", k in t0 and t0[k] is not None)
+        ok("signals keys", isinstance(t0.get("signals"), dict) and "ma5_up" in t0["signals"])
         ok("disclaimer present", "仮想シミュレーション" in (data.get("disclaimer") or ""))
 
     syms = [t["symbol"] for t in trades[:3]]
@@ -73,6 +74,55 @@ def main() -> int:
         page.locator('.dt-tab[data-dt-mode="daily"]').click()
         page.wait_for_timeout(800)
         ok("daily tab renders", page.locator("#dayTradeList .dt-daily-list, #dayTradeList .dt-empty").count() >= 1)
+
+        page.evaluate("""() => {
+          const store = {
+            version: 2,
+            today: null,
+            daily_records: [
+              {
+                date: '2026-05-15',
+                total_pnl: 12500,
+                trade_count: 2,
+                win_count: 1,
+                loss_count: 1,
+                win_rate: 50,
+                trades: [
+                  { symbol: '8035', name: '東京エレクトロン', themes: ['半導体'], final_pnl: 15000, status: 'target_hit',
+                    signals: { ma5_up: true, volume_surge: true }, reason: '5分足上昇' },
+                  { symbol: '8306', name: '三菱UFJ', themes: ['銀行'], final_pnl: -2500, status: 'stop_hit',
+                    signals: { surge_chase: true }, reason: '急騰' },
+                ],
+              },
+              {
+                date: '2026-06-01',
+                total_pnl: 21000,
+                trade_count: 2,
+                win_count: 2,
+                loss_count: 0,
+                win_rate: 100,
+                trades: [
+                  { symbol: '8035', name: '東京エレクトロン', themes: ['半導体'], final_pnl: 12000, status: 'target_hit',
+                    signals: { ma5_up: true, volume_surge: true } },
+                  { symbol: '6857', name: 'アドバンテスト', themes: ['半導体'], final_pnl: 9000, status: 'target_hit',
+                    signals: { ma5_up: true, ma15_up: true } },
+                ],
+              },
+            ],
+            learning_logs: [],
+            growth_snapshots: [],
+            self_evaluations: [{ date: '2026-06-01', good: '半導体良好', bad: '損切り注意', tomorrow: '出来高重視', text: '半導体良好。\\n明日は出来高重視。' }],
+          };
+          localStorage.setItem('stockai_ai_day_trade', JSON.stringify(store));
+        }""")
+
+        page.locator('.dt-tab[data-dt-mode="growth"]').click()
+        page.wait_for_selector("#dayTradeList .dt-growth-title", timeout=15000)
+        ok("growth report tab", page.locator("#dayTradeList .dt-growth-title").count() >= 1)
+        ok("growth comparison", page.locator("#dayTradeList .dt-growth-row").count() >= 3)
+        ok("learned insights", page.locator("#dayTradeList .dt-insight-list li").count() >= 1)
+        ok("theme stats", page.locator("#dayTradeList .dt-stat-bar-row").count() >= 1)
+        ok("self evaluation", page.locator("#dayTradeList .dt-self-eval").count() >= 1)
 
         browser.close()
 

@@ -54,19 +54,25 @@ def _symbol_theme_names(symbol: str, theme_catalog: dict) -> list[str]:
     return [t["name"] for t in theme_catalog.values() if symbol in t.get("symbols", [])]
 
 
-def _check_intraday_uptrend(ticker, get_history_safe, safe_val) -> tuple[bool, float | None]:
+def _check_interval_uptrend(
+    ticker, get_history_safe, safe_val, interval: str, bars: int, threshold: float,
+) -> tuple[bool, float | None]:
     try:
-        hist = get_history_safe(ticker, period="1d", interval="5m")
-        if hist.empty or len(hist) < 6:
+        hist = get_history_safe(ticker, period="1d", interval=interval)
+        if hist.empty or len(hist) < bars:
             return False, None
-        recent = hist["Close"].iloc[-6:]
+        recent = hist["Close"].iloc[-bars:]
         a, b = safe_val(recent.iloc[0]), safe_val(recent.iloc[-1])
         if a and b and a != 0:
             pct = round((b - a) / a * 100, 2)
-            return pct >= 0.25, pct
+            return pct >= threshold, pct
     except Exception:
         pass
     return False, None
+
+
+def _check_intraday_uptrend(ticker, get_history_safe, safe_val) -> tuple[bool, float | None]:
+    return _check_interval_uptrend(ticker, get_history_safe, safe_val, "5m", 6, 0.25)
 
 
 def _apply_learning(score: float, symbol: str, themes: list[str], hints: dict | None) -> float:
@@ -202,7 +208,17 @@ def analyze_daytrade_candidate(symbol: str, deps: dict, hints: dict | None = Non
                     vol_ratio = float(vol.iloc[-1]) / float(vol_mean.iloc[-1])
 
         intraday_up, intraday_pct = _check_intraday_uptrend(ticker, get_history_safe, safe_val)
+        intraday_15_up, _ = _check_interval_uptrend(
+            ticker, get_history_safe, safe_val, "15m", 4, 0.2
+        )
         levels = _build_daytrade_levels(current, change_pct, rsi)
+        exp_profit = levels["expected_profit"]
+        exp_loss = levels["expected_loss"]
+        rr = (
+            round(exp_profit / abs(exp_loss), 2)
+            if exp_loss < 0 and exp_profit > 0
+            else None
+        )
         score, reason = _score_daytrade(
             change_pct, ai_score, themes, rsi, vol_ratio, intraday_up, intraday_pct
         )
@@ -231,6 +247,14 @@ def analyze_daytrade_candidate(symbol: str, deps: dict, hints: dict | None = Non
             "reason": reason,
             "themes": themes[:2],
             "trade_date": trade_date,
+            "risk_reward": rr,
+            "signals": {
+                "ma5_up": intraday_up,
+                "ma15_up": intraday_15_up,
+                "volume_surge": vol_ratio is not None and vol_ratio > 1.35,
+                "rsi_rebound": rsi is not None and rsi < 40,
+                "surge_chase": change_pct is not None and change_pct >= 3,
+            },
         }
     except Exception:
         traceback.print_exc()

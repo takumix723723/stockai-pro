@@ -5315,3 +5315,187 @@ body.main-tab-ipo .ipo-page-embed .ipo-page-head {
   font-size: 0.82rem;
   padding: 20px 8px;
 }
+
+/* ===== AI成長レポート ===== */
+.dt-growth-teaser {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 12px 14px;
+  margin-top: 8px;
+  cursor: pointer;
+}
+
+.dt-growth-teaser-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.dt-growth-teaser-val {
+  font-size: 0.88rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--bg-elevated);
+}
+
+.dt-growth-teaser-val.up { color: #26a69a; }
+.dt-growth-teaser-val.down { color: #ef5350; }
+.dt-growth-teaser-val.neutral { color: #94a3b8; }
+
+.dt-growth-teaser-meta {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.dt-growth-hero {
+  padding: 16px;
+  margin-bottom: 10px;
+}
+
+.dt-growth-title {
+  font-size: 1rem;
+  margin: 0 0 4px;
+}
+
+.dt-growth-sub {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
+.dt-growth-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.82rem;
+}
+
+.dt-growth-row:last-of-type {
+  border-bottom: none;
+}
+
+.dt-growth-label {
+  color: var(--text-muted);
+  min-width: 88px;
+}
+
+.dt-growth-values {
+  text-align: right;
+  flex: 1;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.dt-growth-prev {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.dt-growth-arrow {
+  margin: 0 6px;
+  color: var(--text-muted);
+}
+
+.dt-growth-curr {
+  font-weight: 700;
+}
+
+.dt-growth-curr.up { color: #26a69a; }
+.dt-growth-curr.down { color: #ef5350; }
+
+.dt-growth-delta {
+  display: block;
+  font-size: 0.68rem;
+  margin-top: 2px;
+}
+
+.dt-growth-verdict {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-weight: 700;
+}
+
+.dt-growth-verdict-val.up { color: #26a69a; }
+.dt-growth-verdict-val.down { color: #ef5350; }
+.dt-growth-verdict-val.neutral { color: #fbbf24; }
+
+.dt-growth-section {
+  padding: 14px;
+  margin-bottom: 10px;
+}
+
+.dt-growth-section-title {
+  font-size: 0.88rem;
+  margin: 0 0 10px;
+}
+
+.dt-insight-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.8rem;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.dt-insight-list li {
+  margin-bottom: 6px;
+}
+
+.dt-stat-bar-row {
+  margin-bottom: 10px;
+}
+
+.dt-stat-bar-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  margin-bottom: 4px;
+}
+
+.dt-stat-bar-pct.up { color: #26a69a; font-weight: 700; }
+.dt-stat-bar-pct.down { color: #ef5350; font-weight: 700; }
+.dt-stat-bar-pct.neutral { color: #94a3b8; font-weight: 700; }
+
+.dt-stat-bar-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg-elevated);
+  overflow: hidden;
+}
+
+.dt-stat-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+}
+
+.dt-stat-bar-fill.up { background: #26a69a; }
+.dt-stat-bar-fill.down { background: #ef5350; }
+.dt-stat-bar-fill.neutral { background: #64748b; }
+
+.dt-stat-bar-meta {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+}
+
+.dt-self-eval .dt-self-date {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.dt-self-text {
+  font-size: 0.8rem;
+  line-height: 1.65;
+  color: var(--text-muted);
+  white-space: pre-line;
+  margin: 0;
+}
