@@ -321,12 +321,59 @@
     `;
   }
 
+  function extractLearningHintsForApi() {
+    if (global.DayTrade?.extractLearningHints) {
+      const store = global.DayTrade.getStore();
+      return global.DayTrade.extractLearningHints(store);
+    }
+    return null;
+  }
+
+  function hasLearningHints(hints) {
+    if (!hints) return false;
+    return Object.keys(hints).some((k) => {
+      const v = hints[k];
+      return (Array.isArray(v) && v.length) || v === true;
+    });
+  }
+
+  function skipCardHtml(data) {
+    const label = data.skip_label || '本日のAI判断：見送り';
+    const reason = data.skip_reason || '条件が基準未満のため候補を出しません';
+    return `
+      <div class="ai-skip-card card-premium">
+        <div class="ai-skip-title">${global.escapeHtml ? global.escapeHtml(label) : label}</div>
+        <p class="ai-skip-reason">${global.escapeHtml ? global.escapeHtml(reason) : reason}</p>
+        <p class="ai-skip-meta">スキャン ${data.scanned || 0}銘柄 · 精度重視モード</p>
+      </div>`;
+  }
+
+  function precisionBlockHtml(s) {
+    const wr = s.predicted_win_rate != null ? s.predicted_win_rate.toFixed(1) + '%' : '—';
+    const ev = s.expected_value != null ? fmtSignedYen(s.expected_value) : '—';
+    const conf = s.confidence || '—';
+    const evCls = (s.expected_value || 0) >= 0 ? 'up' : 'down';
+    const confCls = conf === 'A' ? 'up' : (conf === 'B' ? 'neutral' : '');
+    return `
+      <div class="ai-precision-grid">
+        <div class="ai-scenario-kv"><span>予想勝率</span><strong>${wr}</strong></div>
+        <div class="ai-scenario-kv"><span>期待値</span><strong class="${evCls}">${ev}</strong></div>
+        <div class="ai-scenario-kv"><span>信頼度</span><strong class="ai-conf-badge ${confCls}">${conf}</strong></div>
+      </div>`;
+  }
+
+  function reasonsListHtml(s) {
+    const reasons = s.selection_reasons || (s.reason ? [s.reason] : []);
+    if (!reasons.length) return '';
+    const items = reasons.map((r) => `<li>${global.escapeHtml ? global.escapeHtml(r) : r}</li>`).join('');
+    return `<div class="ai-reasons-block"><span class="ai-reasons-label">選定理由</span><ul class="ai-reasons-list">${items}</ul></div>`;
+  }
+
   function scenarioCardHtml(s, opts = {}) {
     const compact = !!opts.compact;
     const showSave = opts.showSave !== false;
     const sym = global.escapeHtml ? global.escapeHtml(s.symbol) : s.symbol;
     const name = global.escapeHtml ? global.escapeHtml(s.name || '') : (s.name || '');
-    const reason = global.escapeHtml ? global.escapeHtml(s.reason || '') : (s.reason || '');
     const verdict = global.escapeHtml ? global.escapeHtml(s.verdict || '') : (s.verdict || '');
     const profitCls = (s.expected_profit || 0) >= 0 ? 'up' : 'down';
     const lossCls = (s.expected_loss || 0) < 0 ? 'down' : 'up';
@@ -339,6 +386,7 @@
           <span class="ai-scenario-name">${name}</span>
           <span class="ai-scenario-verdict">${verdict}</span>
         </div>
+        ${precisionBlockHtml(s)}
         <div class="ai-scenario-grid">
           <div class="ai-scenario-kv"><span>買い</span><strong>${fmtNum(s.shares)}株</strong></div>
           <div class="ai-scenario-kv"><span>買値</span><strong>${fmtYen(s.buy_price)}</strong></div>
@@ -351,7 +399,7 @@
           <span>リスクリワード</span>
           <strong class="ai-scenario-rr-val">${rr}</strong>
         </div>
-        ${compact ? '' : `<p class="ai-scenario-reason">${reason}</p>`}
+        ${compact ? '' : reasonsListHtml(s)}
         <div class="ai-scenario-actions">
           ${showSave ? `<button type="button" class="ai-scenario-btn ai-scenario-save" data-save-symbol="${sym}">保存</button>` : ''}
           <a href="/stock/${encodeURIComponent(s.symbol)}" class="ai-scenario-btn ai-scenario-link">銘柄詳細</a>
@@ -410,6 +458,7 @@
   const TradeScenarios = {
     scenarios: [],
     disclaimer: '',
+    skipInfo: null,
 
     getStore() {
       return loadHistory();
@@ -421,15 +470,28 @@
     },
 
     async fetchScenarios(opts = {}) {
-      const data = global.ApiCache
-        ? await global.ApiCache.fetchJsonCached('/api/trade_scenarios', {
-            ttl: 120000,
-            force: !!opts.force,
-          })
-        : await (await fetch('/api/trade_scenarios', { cache: 'no-store' })).json();
+      const hints = extractLearningHintsForApi();
+      const usePost = hasLearningHints(hints) || !!opts.force;
+      let data;
+      if (usePost) {
+        const res = await fetch('/api/trade_scenarios', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ learning_hints: hints || {} }),
+        });
+        data = await res.json();
+      } else if (global.ApiCache) {
+        data = await global.ApiCache.fetchJsonCached('/api/trade_scenarios', {
+          ttl: 120000,
+          force: !!opts.force,
+        });
+      } else {
+        data = await (await fetch('/api/trade_scenarios', { cache: 'no-store' })).json();
+      }
       if (data.status !== 'ok') throw new Error('failed');
       TradeScenarios.scenarios = data.scenarios || [];
       TradeScenarios.disclaimer = data.disclaimer || '';
+      TradeScenarios.skipInfo = data.skip ? data : null;
       return data;
     },
 
@@ -540,9 +602,14 @@
     renderPreview(hostId) {
       const host = document.getElementById(hostId);
       if (!host) return;
+      if (TradeScenarios.skipInfo) {
+        host.innerHTML = skipCardHtml(TradeScenarios.skipInfo)
+          + `<p class="ai-scenario-disclaimer">${global.escapeHtml ? global.escapeHtml(TradeScenarios.disclaimer) : TradeScenarios.disclaimer}</p>`;
+        return;
+      }
       const list = TradeScenarios.scenarios.slice(0, 3);
       if (!list.length) {
-        host.innerHTML = '<p class="ai-scenario-empty">本日の候補を読み込めませんでした</p>';
+        host.innerHTML = '<p class="ai-scenario-empty">本日は精度基準を満たす候補がありません（見送り）</p>';
         return;
       }
       host.innerHTML = list.map((s) => scenarioCardHtml(s, { compact: true })).join('')
@@ -565,9 +632,15 @@
     renderFullList(hostId) {
       const host = document.getElementById(hostId);
       if (!host) return;
+      if (TradeScenarios.skipInfo) {
+        host.innerHTML = panelTabsHtml('candidates') + skipCardHtml(TradeScenarios.skipInfo)
+          + `<p class="ai-scenario-disclaimer">${global.escapeHtml ? global.escapeHtml(TradeScenarios.disclaimer) : TradeScenarios.disclaimer}</p>`;
+        TradeScenarios.bindPanelTabs(host);
+        return;
+      }
       const list = TradeScenarios.scenarios;
       if (!list.length) {
-        host.innerHTML = '<p class="ai-scenario-empty">候補がありません</p>';
+        host.innerHTML = '<p class="ai-scenario-empty">本日は見送り — 精度基準を満たす候補がありません</p>';
         return;
       }
       host.innerHTML =

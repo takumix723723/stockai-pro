@@ -569,10 +569,39 @@
     );
   }
 
+  function skipDayTradeHtml(data) {
+    const label = data.skip_label || '本日のAI判断：見送り';
+    const reason = data.skip_reason || '出来高・トレンド・リスクリワードが基準未満';
+    return `
+      <div class="dt-skip-card card-premium">
+        <div class="dt-skip-title">${global.escapeHtml ? global.escapeHtml(label) : label}</div>
+        <p class="dt-skip-reason">${global.escapeHtml ? global.escapeHtml(reason) : reason}</p>
+        <p class="dt-skip-meta">スキャン ${data.scanned || 0}銘柄 · 精度重視（最大3件）</p>
+      </div>`;
+  }
+
+  function precisionMetricsHtml(item) {
+    const wr = item.predicted_win_rate != null ? item.predicted_win_rate.toFixed(1) + '%' : '—';
+    const ev = item.expected_value != null ? fmtSignedYen(item.expected_value) : '—';
+    const conf = item.confidence || '—';
+    const evCls = (item.expected_value || 0) >= 0 ? 'up' : 'down';
+    return `
+      <div class="dt-precision-grid">
+        <div class="dt-kv"><span>予想勝率</span><strong>${wr}</strong></div>
+        <div class="dt-kv"><span>期待値</span><strong class="${evCls}">${ev}</strong></div>
+        <div class="dt-kv"><span>信頼度</span><strong class="dt-conf-badge">${conf}</strong></div>
+      </div>`;
+  }
+
+  function selectionReasonsHtml(item) {
+    const reasons = item.selection_reasons || (item.reason ? [item.reason] : []);
+    if (!reasons.length) return '';
+    return `<div class="dt-reasons-block"><span>選定理由</span><ul>${reasons.map((r) => `<li>${global.escapeHtml ? global.escapeHtml(r) : r}</li>`).join('')}</ul></div>`;
+  }
+
   function tradeDetailHtml(trade, opts = {}) {
     const sym = global.escapeHtml ? global.escapeHtml(trade.symbol) : trade.symbol;
     const name = global.escapeHtml ? global.escapeHtml(trade.name || '') : (trade.name || '');
-    const reason = global.escapeHtml ? global.escapeHtml(trade.reason || '') : (trade.reason || '');
     const status = trade.status || 'entered';
     const statusLabel = STATUS_LABEL[status] || status;
     const pnl = trade.final_pnl != null ? trade.final_pnl : (trade.unrealized_pnl != null ? trade.unrealized_pnl : null);
@@ -592,6 +621,7 @@
           </div>
           <span class="dt-status dt-status-${status}">${statusLabel}</span>
         </div>
+        ${precisionMetricsHtml(trade)}
         <div class="dt-grid">
           <div class="dt-kv"><span>仮想買い</span><strong>${fmtNum(trade.shares)}株</strong></div>
           <div class="dt-kv"><span>買値</span><strong>${fmtYen(trade.buy_price)}</strong></div>
@@ -602,7 +632,7 @@
           ${pnl != null ? `<div class="dt-kv"><span>結果</span><strong class="${pnlCls}">${fmtSignedYen(pnl)}</strong></div>` : ''}
           ${TERMINAL.has(status) ? `<div class="dt-kv"><span>判定</span><strong class="${pnlCls}">${outcome}</strong></div>` : ''}
         </div>
-        ${reason ? `<p class="dt-reason"><span>理由：</span>${reason}</p>` : ''}
+        ${selectionReasonsHtml(trade)}
         ${opts.showLink ? `<a href="/stock/${encodeURIComponent(trade.symbol)}" class="dt-link">銘柄詳細 →</a>` : ''}
       </article>`;
   }
@@ -710,6 +740,7 @@
 
   const DayTrade = {
     disclaimer: '',
+    skipInfo: null,
 
     getStore() {
       return loadStore();
@@ -730,6 +761,7 @@
       }
       if (data.status !== 'ok') throw new Error('day_trade failed');
       DayTrade.disclaimer = data.disclaimer || '';
+      DayTrade.skipInfo = data.skip ? data : null;
       return data;
     },
 
@@ -846,7 +878,17 @@
           const apiData = await DayTrade.fetchDaily(
             Object.keys(hints).some((k) => (hints[k] || []).length || hints.extend_target) ? hints : null
           );
+          if (apiData.skip) {
+            host.innerHTML = skipDayTradeHtml(apiData)
+              + `<p class="dt-disclaimer">${global.escapeHtml ? global.escapeHtml(DayTrade.disclaimer) : DayTrade.disclaimer}</p>`;
+            return;
+          }
           store = DayTrade.ensureTodayTrades(apiData);
+        }
+        if (DayTrade.skipInfo) {
+          host.innerHTML = skipDayTradeHtml(DayTrade.skipInfo)
+            + `<p class="dt-disclaimer">${global.escapeHtml ? global.escapeHtml(DayTrade.disclaimer) : DayTrade.disclaimer}</p>`;
+          return;
         }
         store = await DayTrade.updateLiveStatuses(store);
         const quotes = {};
@@ -856,6 +898,11 @@
         store.today.trades.forEach((t) => {
           if (!quotes[t.symbol]) quotes[t.symbol] = { current: t.last_current };
         });
+        if (DayTrade.skipInfo) {
+          host.innerHTML = skipDayTradeHtml(DayTrade.skipInfo)
+            + `<p class="dt-disclaimer">${global.escapeHtml ? global.escapeHtml(DayTrade.disclaimer) : DayTrade.disclaimer}</p>`;
+          return;
+        }
         const teaser = growthTeaserHtml(store);
         host.innerHTML = homeTodayHtml(store, quotes)
           + (teaser || '')
@@ -885,9 +932,15 @@
           store = DayTrade.ensureTodayTrades(apiData);
         }
         if (mode === 'today') {
+          if (DayTrade.skipInfo) {
+            host.innerHTML = panelTabsHtml('today') + skipDayTradeHtml(DayTrade.skipInfo)
+              + `<p class="dt-disclaimer">${global.escapeHtml ? global.escapeHtml(DayTrade.disclaimer) : DayTrade.disclaimer}</p>`;
+            DayTrade.bindPanelTabs(host);
+            return;
+          }
           store = await DayTrade.updateLiveStatuses(store);
           const html = store.today.trades.map((t) => tradeDetailHtml(t, { showLink: true })).join('');
-          host.innerHTML = panelTabsHtml('today') + '<div class="dt-list">' + html + '</div>'
+          host.innerHTML = panelTabsHtml('today') + '<div class="dt-list">' + (html || skipDayTradeHtml({ skip_label: '本日のAI判断：見送り', skip_reason: '精度基準未満', scanned: 0 })) + '</div>'
             + `<p class="dt-disclaimer">${global.escapeHtml ? global.escapeHtml(DayTrade.disclaimer) : DayTrade.disclaimer}</p>`;
           DayTrade.bindPanelTabs(host);
           return;

@@ -2537,13 +2537,23 @@ def api_fund_screener():
     return _json_cached("fund_screener", CACHE_TTL_FUND, build)
 
 
-@app.route("/api/trade_scenarios")
+@app.route("/api/trade_scenarios", methods=["GET", "POST"])
 def api_trade_scenarios():
-    """AI売買シナリオ候補（ルールベース・スコアリング）"""
+    """AI売買シナリオ候補（精度重視・ルールベース）"""
+    hints = {}
+    if request.method == "POST":
+        body = request.get_json(silent=True) or {}
+        hints = body.get("learning_hints") or {}
+
+    if hints:
+        payload = scenario_service.build_trade_scenarios_payload(_scenario_deps(), hints)
+        payload["cached"] = False
+        return jsonify(payload)
+
     return _json_cached(
-        "trade_scenarios_v2",
+        "trade_scenarios_v3",
         CACHE_TTL_SCENARIO,
-        lambda: scenario_service.build_trade_scenarios_payload(_scenario_deps()),
+        lambda: scenario_service.build_trade_scenarios_payload(_scenario_deps(), None),
     )
 
 
@@ -2560,7 +2570,7 @@ def api_day_trade_daily():
         payload["cached"] = False
         return jsonify(payload)
 
-    day_key = f"day_trade_{datetime.now().strftime('%Y%m%d')}"
+    day_key = f"day_trade_v3_{datetime.now().strftime('%Y%m%d')}"
     return _json_cached(
         day_key,
         CACHE_TTL_DAYTRADE,

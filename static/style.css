@@ -5499,3 +5499,78 @@ body.main-tab-ipo .ipo-page-embed .ipo-page-head {
   white-space: pre-line;
   margin: 0;
 }
+
+/* ===== 精度スコア・見送り ===== */
+.ai-precision-grid,
+.dt-precision-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(59, 130, 246, 0.06);
+}
+
+.ai-conf-badge,
+.dt-conf-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  font-weight: 700;
+}
+
+.ai-conf-badge.up,
+.dt-conf-badge {
+  color: #26a69a;
+}
+
+.ai-reasons-block,
+.dt-reasons-block {
+  margin-top: 8px;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+
+.ai-reasons-label {
+  font-weight: 700;
+  color: var(--text);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.ai-reasons-list,
+.dt-reasons-block ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  line-height: 1.5;
+}
+
+.ai-skip-card,
+.dt-skip-card {
+  padding: 16px;
+  text-align: center;
+  border: 1px dashed rgba(251, 191, 36, 0.4);
+}
+
+.ai-skip-title,
+.dt-skip-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #fbbf24;
+  margin-bottom: 8px;
+}
+
+.ai-skip-reason,
+.dt-skip-reason {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin: 0 0 6px;
+}
+
+.ai-skip-meta,
+.dt-skip-meta {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}

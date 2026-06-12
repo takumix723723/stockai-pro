@@ -1,4 +1,4 @@
-"""AI仮想デイトレ候補生成（ルールベース・シミュレーション専用）"""
+"""AI仮想デイトレ候補生成（精度重視・シミュレーション専用）"""
 from __future__ import annotations
 
 import time
@@ -6,9 +6,15 @@ import traceback
 from datetime import datetime
 
 from services.cache import CACHE_TTL_RANKING, cache_get
+from services.precision_scoring import (
+    DAY_TRADE_PICK_LIMIT,
+    attach_precision_fields,
+    build_skip_payload,
+    evaluate_precision,
+    gather_market_context,
+)
 
 DAY_TRADE_SCAN_LIMIT = 12
-DAY_TRADE_PICK_LIMIT = 3
 DISCLAIMER = (
     "※これは実際の売買ではなく、過去/現在データに基づく仮想シミュレーションです。"
     "投資判断は自己責任で行ってください。"
@@ -23,7 +29,6 @@ def _default_daytrade_shares(buy_price: float) -> int:
 
 
 def _build_daytrade_levels(current: float, change_pct: float | None, rsi: float | None) -> dict:
-    """デイトレ向けの狭い利確/損切り"""
     buy = round(current)
     if change_pct is not None and change_pct >= 2:
         target_pct, stop_pct = 2.8, -1.4
@@ -37,6 +42,11 @@ def _build_daytrade_levels(current: float, change_pct: float | None, rsi: float 
     shares = _default_daytrade_shares(buy)
     expected_profit = (target - buy) * shares
     expected_loss = (stop - buy) * shares
+    rr = (
+        round(expected_profit / abs(expected_loss), 2)
+        if expected_loss < 0 and expected_profit > 0
+        else None
+    )
     return {
         "buy_price": buy,
         "target_price": target,
@@ -47,105 +57,12 @@ def _build_daytrade_levels(current: float, change_pct: float | None, rsi: float 
         "expected_loss": expected_loss,
         "target_pct": round(target_pct, 2),
         "stop_pct": round(stop_pct, 2),
+        "risk_reward": rr,
     }
 
 
 def _symbol_theme_names(symbol: str, theme_catalog: dict) -> list[str]:
     return [t["name"] for t in theme_catalog.values() if symbol in t.get("symbols", [])]
-
-
-def _check_interval_uptrend(
-    ticker, get_history_safe, safe_val, interval: str, bars: int, threshold: float,
-) -> tuple[bool, float | None]:
-    try:
-        hist = get_history_safe(ticker, period="1d", interval=interval)
-        if hist.empty or len(hist) < bars:
-            return False, None
-        recent = hist["Close"].iloc[-bars:]
-        a, b = safe_val(recent.iloc[0]), safe_val(recent.iloc[-1])
-        if a and b and a != 0:
-            pct = round((b - a) / a * 100, 2)
-            return pct >= threshold, pct
-    except Exception:
-        pass
-    return False, None
-
-
-def _check_intraday_uptrend(ticker, get_history_safe, safe_val) -> tuple[bool, float | None]:
-    return _check_interval_uptrend(ticker, get_history_safe, safe_val, "5m", 6, 0.25)
-
-
-def _apply_learning(score: float, symbol: str, themes: list[str], hints: dict | None) -> float:
-    if not hints:
-        return score
-    for t in hints.get("boost_themes") or []:
-        if t in themes:
-            score += 10
-    for t in hints.get("penalize_themes") or []:
-        if t in themes:
-            score -= 12
-    if symbol in (hints.get("penalize_symbols") or []):
-        score -= 18
-    for pat in hints.get("boost_patterns") or []:
-        if pat == "volume_surge":
-            score += 4
-    if hints.get("extend_target"):
-        score += 3
-    return score
-
-
-def _score_daytrade(
-    change_pct,
-    ai_score,
-    themes,
-    rsi,
-    vol_ratio,
-    intraday_up,
-    intraday_pct,
-) -> tuple[float, str]:
-    score = 0.0
-    parts: list[str] = []
-
-    total = ai_score.get("total") or 50
-    if total >= 60:
-        score += 16
-        parts.extend(ai_score.get("reasons", [])[:1])
-    elif total >= 52:
-        score += 8
-
-    if change_pct is not None:
-        if change_pct >= 1.5:
-            score += 14
-            parts.append("寄り付き後の上昇")
-        elif change_pct <= -2:
-            score += 10
-            parts.append("押し目からの反発狙い")
-
-    if vol_ratio is not None and vol_ratio > 1.35:
-        score += 14
-        parts.append("出来高増加")
-
-    if intraday_up:
-        score += 16
-        parts.append(f"5分足上昇トレンド({intraday_pct:+.1f}%)" if intraday_pct else "5分足上昇トレンド")
-
-    if themes:
-        score += 10
-        parts.append(f"{themes[0]}テーマが強い")
-
-    if rsi is not None:
-        if 40 <= rsi <= 68:
-            score += 6
-        elif rsi > 75:
-            score -= 6
-            parts.append("買われすぎ注意")
-
-    deduped: list[str] = []
-    for p in parts:
-        if p and p not in deduped:
-            deduped.append(p)
-    reason = "、".join(deduped[:3]) if deduped else "デイトレ向けルールスコアで選定"
-    return score, reason
 
 
 def collect_daytrade_symbols(theme_catalog: dict) -> list[str]:
@@ -175,66 +92,39 @@ def _entry_time_jst() -> str:
 def analyze_daytrade_candidate(symbol: str, deps: dict, hints: dict | None = None) -> dict | None:
     try:
         get_ticker = deps["get_ticker"]
-        get_ticker_info = deps["get_ticker_info"]
-        enrich_fundamentals = deps["enrich_fundamentals"]
         get_history_safe = deps["get_history_safe"]
-        safe_val = deps["safe_val"]
         calc_ai_score = deps["calc_ai_score"]
-        calc_rsi = deps["calc_rsi"]
         resolve_japanese_name = deps["resolve_japanese_name"]
         theme_catalog = deps["theme_catalog"]
 
-        ticker = get_ticker(symbol)
-        info = enrich_fundamentals(get_ticker_info(ticker), ticker, symbol)
-        hist = get_history_safe(ticker, period="1mo", interval="1d")
-        current = safe_val(info.get("currentPrice") or info.get("regularMarketPrice"))
-        if current is None and not hist.empty:
-            current = safe_val(hist["Close"].iloc[-1])
-        if current is None or current <= 0:
+        ctx = gather_market_context(symbol, deps)
+        if not ctx:
             return None
 
-        prev = safe_val(info.get("previousClose"))
-        change_pct = round((current - prev) / prev * 100, 2) if prev and prev != 0 else None
-        ai_score = calc_ai_score(info, hist, symbol)
+        ticker = get_ticker(symbol)
+        hist = get_history_safe(ticker, period="3mo", interval="1d")
+        info_row = deps["enrich_fundamentals"](
+            deps["get_ticker_info"](ticker), ticker, symbol
+        )
+        ai_score = calc_ai_score(info_row, hist, symbol)
         themes = _symbol_theme_names(symbol, theme_catalog)
 
-        rsi = vol_ratio = None
-        if not hist.empty and len(hist) >= 14:
-            rsi = safe_val(calc_rsi(hist["Close"]).iloc[-1])
-            if len(hist) >= 20:
-                vol = hist["Volume"]
-                vol_mean = vol.rolling(20).mean()
-                if safe_val(vol.iloc[-1]) and safe_val(vol_mean.iloc[-1]):
-                    vol_ratio = float(vol.iloc[-1]) / float(vol_mean.iloc[-1])
-
-        intraday_up, intraday_pct = _check_intraday_uptrend(ticker, get_history_safe, safe_val)
-        intraday_15_up, _ = _check_interval_uptrend(
-            ticker, get_history_safe, safe_val, "15m", 4, 0.2
+        levels = _build_daytrade_levels(ctx.current, ctx.change_pct, ctx.rsi)
+        ev = evaluate_precision(
+            ctx, levels, themes, ai_score, hints, mode="daytrade", hist=hist
         )
-        levels = _build_daytrade_levels(current, change_pct, rsi)
-        exp_profit = levels["expected_profit"]
-        exp_loss = levels["expected_loss"]
-        rr = (
-            round(exp_profit / abs(exp_loss), 2)
-            if exp_loss < 0 and exp_profit > 0
-            else None
-        )
-        score, reason = _score_daytrade(
-            change_pct, ai_score, themes, rsi, vol_ratio, intraday_up, intraday_pct
-        )
-        score = _apply_learning(score, symbol, themes, hints)
-        if score < 22:
+        if not ev or not ev.passed:
             return None
 
         trade_date = datetime.now().strftime("%Y-%m-%d")
-        return {
+        row = {
             "id": f"{symbol}-{trade_date.replace('-', '')}",
             "symbol": symbol,
-            "name": resolve_japanese_name(symbol, info),
-            "current": current,
-            "change_pct": change_pct,
+            "name": resolve_japanese_name(symbol, info_row),
+            "current": ctx.current,
+            "change_pct": ctx.change_pct,
             "ai_score": ai_score.get("total"),
-            "daytrade_score": round(score, 1),
+            "daytrade_score": ev.precision_score,
             "buy_price": levels["buy_price"],
             "shares": levels["shares"],
             "target_price": levels["target_price"],
@@ -244,18 +134,11 @@ def analyze_daytrade_candidate(symbol: str, deps: dict, hints: dict | None = Non
             "entry_time": _entry_time_jst(),
             "exit_time": None,
             "status": "entered",
-            "reason": reason,
             "themes": themes[:2],
             "trade_date": trade_date,
-            "risk_reward": rr,
-            "signals": {
-                "ma5_up": intraday_up,
-                "ma15_up": intraday_15_up,
-                "volume_surge": vol_ratio is not None and vol_ratio > 1.35,
-                "rsi_rebound": rsi is not None and rsi < 40,
-                "surge_chase": change_pct is not None and change_pct >= 3,
-            },
+            "risk_reward": levels["risk_reward"],
         }
+        return attach_precision_fields(row, ev)
     except Exception:
         traceback.print_exc()
         return None
@@ -269,14 +152,36 @@ def build_day_trade_payload(deps: dict, learning_hints: dict | None = None) -> d
         if row:
             rows.append(row)
         time.sleep(0.02)
-    rows.sort(key=lambda x: x.get("daytrade_score", 0), reverse=True)
+
+    _rank = {"A": 4, "B": 3, "C": 2, "D": 1}
+    rows.sort(
+        key=lambda x: (
+            _rank.get(x.get("confidence"), 0),
+            x.get("expected_value", 0),
+            x.get("daytrade_score", 0),
+        ),
+        reverse=True,
+    )
+    picks = rows[:DAY_TRADE_PICK_LIMIT]
     trade_date = datetime.now().strftime("%Y-%m-%d")
-    return {
+
+    payload = {
         "status": "ok",
         "date": trade_date,
         "date_label": datetime.now().strftime("%Y/%m/%d"),
-        "trades": rows[:DAY_TRADE_PICK_LIMIT],
+        "trades": picks,
         "scanned": len(symbols),
         "generated_at": datetime.now().isoformat(),
         "disclaimer": DISCLAIMER,
+        "precision_mode": True,
     }
+
+    if not picks:
+        skip = build_skip_payload("daytrade", len(symbols), [
+            "出来高・トレンド・リスクリワードが基準未満",
+            "4つ以上の条件が一致する銘柄がありませんでした",
+        ])
+        payload.update(skip)
+        payload["trades"] = []
+
+    return payload

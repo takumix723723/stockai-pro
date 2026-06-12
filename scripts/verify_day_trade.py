@@ -34,13 +34,17 @@ def main() -> int:
     data = api_get("/api/day_trade/daily")
     ok("api status ok", data.get("status") == "ok")
     trades = data.get("trades") or []
-    ok("today candidates", len(trades) >= 1, f"n={len(trades)}")
+    ok("today candidates or skip", len(trades) >= 1 or data.get("skip") is True, f"n={len(trades)} skip={data.get('skip')}")
+    ok("precision_mode", data.get("precision_mode") is True)
 
     if trades:
         t0 = trades[0]
-        for k in ["symbol", "buy_price", "shares", "target_price", "stop_price", "reason", "entry_time", "signals", "risk_reward"]:
+        for k in ["symbol", "buy_price", "shares", "target_price", "stop_price", "entry_time", "signals", "risk_reward",
+                  "predicted_win_rate", "expected_value", "confidence", "selection_reasons"]:
             ok(f"field {k}", k in t0 and t0[k] is not None)
         ok("signals keys", isinstance(t0.get("signals"), dict) and "ma5_up" in t0["signals"])
+    elif data.get("skip"):
+        ok("skip label", "見送り" in (data.get("skip_label") or ""))
         ok("disclaimer present", "仮想シミュレーション" in (data.get("disclaimer") or ""))
 
     syms = [t["symbol"] for t in trades[:3]]
@@ -56,12 +60,12 @@ def main() -> int:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
         page.goto(BASE + "/", wait_until="domcontentloaded", timeout=120000)
-        page.wait_for_selector("#dayTradeHome .dt-home-hero, #dayTradeHome .dt-empty", timeout=120000)
-        ok("home day trade section", page.locator("#dayTradeHome .dt-home-hero").count() >= 1)
+        page.wait_for_selector("#dayTradeHome .dt-home-hero, #dayTradeHome .dt-skip-card, #dayTradeHome .dt-empty", timeout=120000)
+        ok("home day trade section", page.locator("#dayTradeHome .dt-home-hero, #dayTradeHome .dt-skip-card").count() >= 1)
 
         page.click("#openDayTradePanel")
-        page.wait_for_selector("#dayTradeList .dt-card", timeout=90000)
-        ok("panel trade cards", page.locator("#dayTradeList .dt-card").count() >= 1)
+        page.wait_for_selector("#dayTradeList .dt-card, #dayTradeList .dt-skip-card", timeout=90000)
+        ok("panel trade cards", page.locator("#dayTradeList .dt-card, #dayTradeList .dt-skip-card").count() >= 1)
 
         stored = page.evaluate("""() => {
           const raw = localStorage.getItem('stockai_ai_day_trade');
