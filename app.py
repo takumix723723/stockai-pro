@@ -32,6 +32,7 @@ from services.cache import (
 from services import quotes as quote_service
 from services import trade_scenarios as scenario_service
 from services import day_trade as day_trade_service
+from services import ai_fund as ai_fund_service
 
 
 def get_base_path():
@@ -2575,6 +2576,26 @@ def api_day_trade_daily():
         day_key,
         CACHE_TTL_DAYTRADE,
         lambda: day_trade_service.build_day_trade_payload(_scenario_deps(), None),
+    )
+
+
+def _ai_fund_deps():
+    return {
+        "get_history_safe": get_history_safe,
+        "safe_val": safe_val,
+    }
+
+
+@app.route("/api/ai_fund/benchmark")
+def api_ai_fund_benchmark():
+    """AIファンド期間比較用 — 日経平均・TOPIXの期間リターン"""
+    start = request.args.get("start") or None
+    end = request.args.get("end") or None
+    cache_key = f"ai_fund_bench_{start or 'auto'}_{end or 'today'}"
+    return _json_cached(
+        cache_key,
+        CACHE_TTL_MARKET,
+        lambda: ai_fund_service.build_benchmark_payload(_ai_fund_deps(), start, end),
     )
 
 

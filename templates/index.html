@@ -13,7 +13,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/static/icons/apple-touch-icon.png">
   <link rel="manifest" href="/manifest.json">
   <title>StockAI Pro - 日本株分析</title>
-  <link rel="stylesheet" href="/static/style.css?v=48">
+  <link rel="stylesheet" href="/static/style.css?v=49">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 </head>
@@ -131,6 +131,11 @@
         <span class="home-menu-label">AI仮想デイトレ</span>
         <span class="home-menu-desc">検証・学習用</span>
       </button>
+      <button type="button" class="home-menu-card" data-panel="aifund">
+        <span class="home-menu-icon">📈</span>
+        <span class="home-menu-label">AIファンド</span>
+        <span class="home-menu-desc">長期成績・市場比較</span>
+      </button>
       <a href="#" class="home-menu-card home-menu-link" id="homeIpoMenuLink" data-tab-nav="ipo">
         <span class="home-menu-icon">🆕</span>
         <span class="home-menu-label">IPO・PO</span>
@@ -156,6 +161,15 @@
     <p class="section-sub">ルールベースで全銘柄から売買候補を抽出（シミュレーション）</p>
     <div class="ai-scenario-home-preview" id="aiScenarioHomePreview">
       <div class="skeleton-list"><div class="skeleton-card"></div><div class="skeleton-card"></div></div>
+    </div>
+
+    <div class="section-title-row">
+      <div class="section-title">📈 AIファンド</div>
+      <button type="button" class="section-link-btn" id="openAiFundPanel">長期成績・市場比較</button>
+    </div>
+    <p class="section-sub">仮想100万円でデイトレ・シナリオの検証結果を集計（実注文なし）</p>
+    <div class="ai-fund-home" id="aiFundHome">
+      <div class="af-home-skeleton"><div class="skeleton-card"></div></div>
     </div>
 
     <div class="section-title">🤖 市場AI要約</div>
@@ -217,12 +231,13 @@
     </a>
   </nav>
 
-  <script src="/static/api-cache.js?v=48"></script>
-  <script src="/static/watchlist.js?v=48"></script>
-  <script src="/static/theme.js?v=48"></script>
-  <script src="/static/trade-scenarios.js?v=48"></script>
-  <script src="/static/day-trade.js?v=48"></script>
-  <script src="/static/script.js?v=48"></script>
+  <script src="/static/api-cache.js?v=49"></script>
+  <script src="/static/watchlist.js?v=49"></script>
+  <script src="/static/theme.js?v=49"></script>
+  <script src="/static/trade-scenarios.js?v=49"></script>
+  <script src="/static/day-trade.js?v=49"></script>
+  <script src="/static/ai-fund.js?v=49"></script>
+  <script src="/static/script.js?v=49"></script>
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       initIndex();
@@ -231,8 +246,8 @@
     const tabLoaded = { home: false, watchlist: false, ranking: false, ipo: false };
     const tabLoading = { home: false, watchlist: false, ranking: false, ipo: false };
     let ipoScriptPromise = null;
-    const panelLoaded = { buried: false, fund: false, market: false, scenarios: false, daytrade: false };
-    const panelLoading = { buried: false, fund: false, market: false, scenarios: false, daytrade: false };
+    const panelLoaded = { buried: false, fund: false, market: false, scenarios: false, daytrade: false, aifund: false };
+    const panelLoading = { buried: false, fund: false, market: false, scenarios: false, daytrade: false, aifund: false };
     let notifLoaded = false;
     let currentMainTab = 'home';
     let activeSubPanel = null;
@@ -319,6 +334,13 @@
         desc: '毎日の仮想デイトレ・日別成績・AI学習ログ（実注文なし）',
         bodyClass: 'day-trade-panel',
         listId: 'dayTradeList',
+      },
+      aifund: {
+        title: 'AIファンド',
+        icon: '📈',
+        desc: '仮想100万円の長期運用成績・市場比較・実力評価（実注文なし）',
+        bodyClass: 'ai-fund-panel',
+        listId: 'aiFundList',
       },
     };
 
@@ -450,6 +472,7 @@
 
       document.getElementById('openScenariosPanel')?.addEventListener('click', () => openSubPanel('scenarios'));
       document.getElementById('openDayTradePanel')?.addEventListener('click', () => openSubPanel('daytrade'));
+      document.getElementById('openAiFundPanel')?.addEventListener('click', () => openSubPanel('aifund'));
 
       document.getElementById('notifToggle').addEventListener('click', toggleNotifPanel);
       document.getElementById('notifClose').addEventListener('click', closeNotifPanel);
@@ -467,6 +490,7 @@
       setupHomeLazyLoad();
       initIndexAutoRefresh();
       if (window.DayTrade) DayTrade.initHome();
+      if (window.AiFund) AiFund.initHome();
 
       const urlTab = new URLSearchParams(window.location.search).get('tab');
       if (urlTab && ['watchlist', 'ranking', 'ipo'].includes(urlTab)) {
@@ -777,6 +801,8 @@
         window.TradeScenarios?.loadPanel('aiScenarioList', 'candidates').finally(done);
       } else if (name === 'daytrade') {
         window.DayTrade?.loadPanel('dayTradeList', 'today').finally(done);
+      } else if (name === 'aifund') {
+        window.AiFund?.loadPanel('aiFundList').finally(done);
       } else panelLoading[name] = false;
     }
 
@@ -1181,6 +1207,6 @@
     }
   </script>
   <!-- search-v41: 285A / 会社名検索（旧4桁制限を上書き） -->
-  <script src="/static/search.js?v=48"></script>
+  <script src="/static/search.js?v=49"></script>
 </body>
 </html>
