@@ -404,6 +404,9 @@
     `;
   }
 
+  let _lastTrackAt = 0;
+  const TRACK_MIN_MS = 60000;
+
   const TradeScenarios = {
     scenarios: [],
     disclaimer: '',
@@ -417,9 +420,13 @@
       return computeStats(store.resolved || []);
     },
 
-    async fetchScenarios() {
-      const res = await fetch('/api/trade_scenarios', { cache: 'no-store' });
-      const data = await res.json();
+    async fetchScenarios(opts = {}) {
+      const data = global.ApiCache
+        ? await global.ApiCache.fetchJsonCached('/api/trade_scenarios', {
+            ttl: 120000,
+            force: !!opts.force,
+          })
+        : await (await fetch('/api/trade_scenarios', { cache: 'no-store' })).json();
       if (data.status !== 'ok') throw new Error('failed');
       TradeScenarios.scenarios = data.scenarios || [];
       TradeScenarios.disclaimer = data.disclaimer || '';
@@ -465,27 +472,41 @@
       TradeScenarios.renderHomeScore();
     },
 
-    async refreshQuotes(items) {
+    async refreshQuotes(items, opts = {}) {
       const symbols = [...new Set(items.map((x) => x.symbol))];
       if (!symbols.length) return {};
-      const res = await fetch('/api/trade_scenarios/track', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbols }),
-      });
-      const data = await res.json();
+      const force = !!opts.force;
+      if (!force && Date.now() - _lastTrackAt < TRACK_MIN_MS) {
+        return {};
+      }
+      let data;
+      if (global.ApiCache) {
+        data = await global.ApiCache.postJsonCached(
+          '/api/trade_scenarios/track',
+          { symbols },
+          { ttl: TRACK_MIN_MS, force },
+        );
+      } else {
+        const res = await fetch('/api/trade_scenarios/track', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ symbols }),
+        });
+        data = await res.json();
+      }
       if (data.status !== 'ok') throw new Error('track failed');
+      _lastTrackAt = Date.now();
       return data.quotes || {};
     },
 
-    async updateHistoryStatuses() {
+    async updateHistoryStatuses(opts = {}) {
       let store = loadHistory();
       if (!store.items.length) {
         processVerification(store);
         saveHistory(store);
         return store;
       }
-      const quotes = await TradeScenarios.refreshQuotes(store.items);
+      const quotes = await TradeScenarios.refreshQuotes(store.items, opts);
       store.items = store.items.map((item) => {
         const q = quotes[item.symbol];
         const current = q?.current;
@@ -622,11 +643,15 @@
       TradeScenarios.renderHomeScore();
       const host = document.getElementById('aiScenarioHomePreview');
       if (!host) return;
+      host.innerHTML = '<div class="ai-scenario-loading">候補を読み込み中...</div>';
       try {
         await TradeScenarios.fetchScenarios();
         TradeScenarios.renderPreview('aiScenarioHomePreview');
-        await TradeScenarios.updateHistoryStatuses();
-        TradeScenarios.renderHomeScore();
+        const store = TradeScenarios.getStore();
+        if (store.items.length) {
+          await TradeScenarios.updateHistoryStatuses({ force: true });
+          TradeScenarios.renderHomeScore();
+        }
       } catch (e) {
         console.error(e);
         host.innerHTML = '<p class="ai-scenario-empty">AI売買シナリオの読み込みに失敗しました</p>';
@@ -638,7 +663,8 @@
       if (!host) return;
       try {
         if (!TradeScenarios.scenarios.length) await TradeScenarios.fetchScenarios();
-        await TradeScenarios.updateHistoryStatuses();
+        const store = TradeScenarios.getStore();
+        if (store.items.length) await TradeScenarios.updateHistoryStatuses({ force: true });
         if (mode === 'history') await TradeScenarios.renderHistory(host);
         else if (mode === 'scoreboard') TradeScenarios.renderScoreboard(host);
         else TradeScenarios.renderFullList(listId);

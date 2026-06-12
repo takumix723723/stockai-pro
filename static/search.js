@@ -75,8 +75,10 @@
   }
 
   async function fetchSearchResults(query, limit) {
-    const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&limit=${limit}`);
-    const json = await res.json();
+    const url = `/api/search?q=${encodeURIComponent(query)}&limit=${limit}`;
+    const json = global.ApiCache
+      ? await global.ApiCache.fetchJsonCached(url, { ttl: 300000 })
+      : await (await fetch(url)).json();
     return json.results || [];
   }
 

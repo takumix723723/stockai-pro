@@ -145,9 +145,10 @@
     </section>
   </main>
 
-  <script src="/static/script.js?v=42"></script>
-  <script src="/static/stock-chart-periods.js?v=42"></script>
-  <script src="/static/stock-simulator.js?v=42"></script>
+  <script src="/static/api-cache.js?v=45"></script>
+  <script src="/static/script.js?v=45"></script>
+  <script src="/static/stock-chart-periods.js?v=45"></script>
+  <script src="/static/stock-simulator.js?v=45"></script>
 <script>
     const SYMBOL = {{ symbol|tojson }};
     const MA_COLORS = {
@@ -305,16 +306,22 @@
       updateStockLiveBadge(true);
     }
 
-    /** チャート・AI・ニュース等 — 10〜15秒 */
+    let stockSlowTick = 0;
+
+    /** チャート・AIは毎回、保有・セクター・ニュースは3回に1回 */
     async function refreshStockSlow() {
       if (document.hidden) return;
-      await Promise.allSettled([
+      stockSlowTick += 1;
+      const tasks = [
         loadChart(currentPeriod, { silent: true }),
         loadAiCard({ silent: true }),
-        loadHoldings({ silent: true }),
-        loadSector({ silent: true }),
-        loadNews({ silent: true }),
-      ]);
+      ];
+      if (stockSlowTick % 3 === 0) {
+        tasks.push(loadHoldings({ silent: true }));
+        tasks.push(loadSector({ silent: true }));
+        tasks.push(loadNews({ silent: true }));
+      }
+      await Promise.allSettled(tasks);
     }
 
     function updateStockLiveBadge(active) {

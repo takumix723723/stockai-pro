@@ -203,11 +203,11 @@
     </a>
   </nav>
 
-  <script src="/static/watchlist.js?v=44"></script>
-  <script src="/static/theme.js?v=44"></script>
-  <script src="/static/ipo.js?v=44"></script>
-  <script src="/static/trade-scenarios.js?v=44"></script>
-  <script src="/static/script.js?v=44"></script>
+  <script src="/static/api-cache.js?v=45"></script>
+  <script src="/static/watchlist.js?v=45"></script>
+  <script src="/static/theme.js?v=45"></script>
+  <script src="/static/trade-scenarios.js?v=45"></script>
+  <script src="/static/script.js?v=45"></script>
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       initIndex();
@@ -215,6 +215,7 @@
 
     const tabLoaded = { home: false, watchlist: false, ranking: false, ipo: false };
     const tabLoading = { home: false, watchlist: false, ranking: false, ipo: false };
+    let ipoScriptPromise = null;
     const panelLoaded = { buried: false, fund: false, market: false, scenarios: false };
     const panelLoading = { buried: false, fund: false, market: false, scenarios: false };
     let notifLoaded = false;
@@ -666,8 +667,22 @@
       tabLoading.ipo = false;
     }
 
-    function loadIpoContent(opts = {}) {
-      if (!document.getElementById('tab-ipo')) return Promise.resolve();
+    function ensureIpoScript() {
+      if (window.IpoPage) return Promise.resolve();
+      if (ipoScriptPromise) return ipoScriptPromise;
+      ipoScriptPromise = new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = '/static/ipo.js?v=45';
+        s.onload = () => resolve();
+        s.onerror = () => reject(new Error('ipo.js load failed'));
+        document.body.appendChild(s);
+      });
+      return ipoScriptPromise;
+    }
+
+    async function loadIpoContent(opts = {}) {
+      if (!document.getElementById('tab-ipo')) return;
+      await ensureIpoScript();
       IpoPage.init();
       return Promise.all([
         IpoPage.loadIpoList(opts),
@@ -831,8 +846,9 @@
       const ticker = document.getElementById('marketTicker');
       if (!ticker) return false;
       try {
-        const res = silent ? await fetchSilent('/api/market_indices') : await fetch('/api/market_indices');
-        const data = await res.json();
+        const data = window.ApiCache
+          ? await ApiCache.fetchJsonCached('/api/market_indices', { ttl: 60000 })
+          : await (await (silent ? fetchSilent('/api/market_indices') : fetch('/api/market_indices'))).json();
         if (data.status !== 'ok') throw new Error('failed');
 
         const meta = updatedLabel(data);
@@ -866,8 +882,9 @@
         aiCard.innerHTML = '<div class="skeleton-block skeleton-lg"></div><div class="skeleton-line"></div><div class="skeleton-line skeleton-sm"></div>';
       }
       try {
-        const res = silent ? await fetchSilent('/api/market_summary') : await fetch('/api/market_summary');
-        const data = await res.json();
+        const data = window.ApiCache
+          ? await ApiCache.fetchJsonCached('/api/market_summary', { ttl: 120000, force: isRetry })
+          : await (await (silent ? fetchSilent('/api/market_summary') : fetch('/api/market_summary'))).json();
         if (data.status !== 'ok') throw new Error('failed');
 
         themesEl.innerHTML = `
@@ -885,7 +902,7 @@
         `;
         resetAutoRetry('homeContent');
         if (window.TradeScenarios) {
-          await TradeScenarios.initHomePreview();
+          TradeScenarios.initHomePreview();
         }
         return true;
       } catch (e) {
@@ -988,8 +1005,9 @@
         losersEl.innerHTML = '';
       }
       try {
-        const res = silent ? await fetchSilent('/api/ranking') : await fetch('/api/ranking');
-        const data = await res.json();
+        const data = window.ApiCache
+          ? await ApiCache.fetchJsonCached('/api/ranking', { ttl: 120000, force: isRetry })
+          : await (await (silent ? fetchSilent('/api/ranking') : fetch('/api/ranking'))).json();
         if (data.status !== 'ok') throw new Error('failed');
 
         const liveTag = data.live ? '<span class="live-badge">速報</span>' : '';
@@ -1137,6 +1155,6 @@
     }
   </script>
   <!-- search-v41: 285A / 会社名検索（旧4桁制限を上書き） -->
-  <script src="/static/search.js?v=41"></script>
+  <script src="/static/search.js?v=45"></script>
 </body>
 </html>
