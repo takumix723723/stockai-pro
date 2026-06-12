@@ -1,5 +1,5 @@
 /* StockAI Pro Service Worker v4 — 軽量・ネットワーク優先 */
-const CACHE_VERSION = 'stockai-pro-v45';
+const CACHE_VERSION = 'stockai-pro-v46';
 const STATIC_CACHE = `${CACHE_VERSION}-core`;
 
 const PRECACHE = [
@@ -13,6 +13,7 @@ const PRECACHE = [
   '/static/stock-chart-periods.js',
   '/static/stock-simulator.js',
   '/static/trade-scenarios.js',
+  '/static/day-trade.js',
   '/static/ipo.js',
   '/static/manifest.json',
   '/static/icons/icon-192.png',

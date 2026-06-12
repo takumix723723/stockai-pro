@@ -22,6 +22,7 @@ from services.cache import (
     CACHE_TTL_MARKET,
     CACHE_TTL_RANKING,
     CACHE_TTL_SCENARIO,
+    CACHE_TTL_DAYTRADE,
     CACHE_TTL_SEARCH,
     CACHE_TTL_STOCK,
     cache_get,
@@ -30,6 +31,7 @@ from services.cache import (
 )
 from services import quotes as quote_service
 from services import trade_scenarios as scenario_service
+from services import day_trade as day_trade_service
 
 
 def get_base_path():
@@ -2543,6 +2545,49 @@ def api_trade_scenarios():
         CACHE_TTL_SCENARIO,
         lambda: scenario_service.build_trade_scenarios_payload(_scenario_deps()),
     )
+
+
+@app.route("/api/day_trade/daily", methods=["GET", "POST"])
+def api_day_trade_daily():
+    """AI仮想デイトレ候補（実注文なし・シミュレーション専用）"""
+    hints = {}
+    if request.method == "POST":
+        body = request.get_json(silent=True) or {}
+        hints = body.get("learning_hints") or {}
+
+    if hints:
+        payload = day_trade_service.build_day_trade_payload(_scenario_deps(), hints)
+        payload["cached"] = False
+        return jsonify(payload)
+
+    day_key = f"day_trade_{datetime.now().strftime('%Y%m%d')}"
+    return _json_cached(
+        day_key,
+        CACHE_TTL_DAYTRADE,
+        lambda: day_trade_service.build_day_trade_payload(_scenario_deps(), None),
+    )
+
+
+@app.route("/api/day_trade/track", methods=["POST"])
+def api_day_trade_track():
+    """仮想デイトレの現在値一括取得（キャッシュ・重複排除）"""
+    body = request.get_json(silent=True) or {}
+    symbols = body.get("symbols") or []
+    if not isinstance(symbols, list):
+        return jsonify({"status": "error", "message": "symbols must be a list"}), 400
+    unique = []
+    seen = set()
+    for raw in symbols[:20]:
+        sym = str(raw).strip().upper()
+        if sym and sym not in seen:
+            seen.add(sym)
+            unique.append(sym)
+    quotes = quote_service.fetch_cached_quotes(unique, _quote_deps())
+    return jsonify({
+        "status": "ok",
+        "quotes": quotes,
+        "updated_at": datetime.now().isoformat(),
+    })
 
 
 @app.route("/api/trade_scenarios/track", methods=["POST"])

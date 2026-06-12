@@ -15,6 +15,7 @@ CACHE_TTL_MARKET = 300        # 指数・テーマ（5分）
 CACHE_TTL_RANKING = 300       # 急騰急落（5分）
 CACHE_TTL_FUND = 600          # ファンドスクリーナー（10分）
 CACHE_TTL_SCENARIO = 180      # AI売買候補（3分）
+CACHE_TTL_DAYTRADE = 180      # AI仮想デイトレ（3分）
 CACHE_TTL_SEARCH = 600        # 検索インデックス補助
 CACHE_TTL_IPO = 1800          # IPO（30分）
 

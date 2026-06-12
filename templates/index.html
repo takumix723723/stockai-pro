@@ -13,7 +13,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/static/icons/apple-touch-icon.png">
   <link rel="manifest" href="/manifest.json">
   <title>StockAI Pro - 日本株分析</title>
-  <link rel="stylesheet" href="/static/style.css?v=44">
+  <link rel="stylesheet" href="/static/style.css?v=46">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 </head>
@@ -126,6 +126,11 @@
         <span class="home-menu-label">AI売買シナリオ</span>
         <span class="home-menu-desc">今日の売買候補</span>
       </button>
+      <button type="button" class="home-menu-card" data-panel="daytrade">
+        <span class="home-menu-icon">⚡</span>
+        <span class="home-menu-label">AI仮想デイトレ</span>
+        <span class="home-menu-desc">検証・学習用</span>
+      </button>
       <a href="#" class="home-menu-card home-menu-link" id="homeIpoMenuLink" data-tab-nav="ipo">
         <span class="home-menu-icon">🆕</span>
         <span class="home-menu-label">IPO・PO</span>
@@ -134,6 +139,15 @@
     </div>
 
     <div id="aiScoreHome" class="ai-score-home-host"></div>
+
+    <div class="section-title-row">
+      <div class="section-title">⚡ 今日AIに任せた場合</div>
+      <button type="button" class="section-link-btn" id="openDayTradePanel">仮想デイトレ詳細</button>
+    </div>
+    <p class="section-sub">実注文なし・仮想シミュレーションでAIのデイトレ成績を検証</p>
+    <div class="day-trade-home" id="dayTradeHome">
+      <div class="dt-home-skeleton"><div class="skeleton-card"></div></div>
+    </div>
 
     <div class="section-title-row">
       <div class="section-title">🎯 AI売買シナリオ</div>
@@ -203,11 +217,12 @@
     </a>
   </nav>
 
-  <script src="/static/api-cache.js?v=45"></script>
-  <script src="/static/watchlist.js?v=45"></script>
-  <script src="/static/theme.js?v=45"></script>
-  <script src="/static/trade-scenarios.js?v=45"></script>
-  <script src="/static/script.js?v=45"></script>
+  <script src="/static/api-cache.js?v=46"></script>
+  <script src="/static/watchlist.js?v=46"></script>
+  <script src="/static/theme.js?v=46"></script>
+  <script src="/static/trade-scenarios.js?v=46"></script>
+  <script src="/static/day-trade.js?v=46"></script>
+  <script src="/static/script.js?v=46"></script>
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       initIndex();
@@ -216,8 +231,8 @@
     const tabLoaded = { home: false, watchlist: false, ranking: false, ipo: false };
     const tabLoading = { home: false, watchlist: false, ranking: false, ipo: false };
     let ipoScriptPromise = null;
-    const panelLoaded = { buried: false, fund: false, market: false, scenarios: false };
-    const panelLoading = { buried: false, fund: false, market: false, scenarios: false };
+    const panelLoaded = { buried: false, fund: false, market: false, scenarios: false, daytrade: false };
+    const panelLoading = { buried: false, fund: false, market: false, scenarios: false, daytrade: false };
     let notifLoaded = false;
     let currentMainTab = 'home';
     let activeSubPanel = null;
@@ -297,6 +312,13 @@
         desc: '全銘柄から抽出した売買候補と、保存シナリオの損益追跡',
         bodyClass: 'ai-scenario-panel',
         listId: 'aiScenarioList',
+      },
+      daytrade: {
+        title: 'AI仮想デイトレ',
+        icon: '⚡',
+        desc: '毎日の仮想デイトレ・日別成績・AI学習ログ（実注文なし）',
+        bodyClass: 'day-trade-panel',
+        listId: 'dayTradeList',
       },
     };
 
@@ -427,6 +449,7 @@
       });
 
       document.getElementById('openScenariosPanel')?.addEventListener('click', () => openSubPanel('scenarios'));
+      document.getElementById('openDayTradePanel')?.addEventListener('click', () => openSubPanel('daytrade'));
 
       document.getElementById('notifToggle').addEventListener('click', toggleNotifPanel);
       document.getElementById('notifClose').addEventListener('click', closeNotifPanel);
@@ -443,6 +466,7 @@
       setupSubPanelThemeInteractions();
       setupHomeLazyLoad();
       initIndexAutoRefresh();
+      if (window.DayTrade) DayTrade.initHome();
 
       const urlTab = new URLSearchParams(window.location.search).get('tab');
       if (urlTab && ['watchlist', 'ranking', 'ipo'].includes(urlTab)) {
@@ -751,6 +775,8 @@
       else if (name === 'market') loadMarketAi().finally(done);
       else if (name === 'scenarios') {
         window.TradeScenarios?.loadPanel('aiScenarioList', 'candidates').finally(done);
+      } else if (name === 'daytrade') {
+        window.DayTrade?.loadPanel('dayTradeList', 'today').finally(done);
       } else panelLoading[name] = false;
     }
 
@@ -1155,6 +1181,6 @@
     }
   </script>
   <!-- search-v41: 285A / 会社名検索（旧4桁制限を上書き） -->
-  <script src="/static/search.js?v=45"></script>
+  <script src="/static/search.js?v=46"></script>
 </body>
 </html>
