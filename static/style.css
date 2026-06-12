@@ -4398,3 +4398,205 @@ body.main-tab-ipo .ipo-page-embed .ipo-page-head {
   color: var(--text-muted);
   font-size: 0.78rem;
 }
+
+/* ===== 売買シミュレーター ===== */
+.trade-simulator-section {
+  margin-top: 4px;
+}
+
+.trade-simulator-card {
+  padding: 14px 16px 16px;
+}
+
+.sim-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+  margin-bottom: 14px;
+}
+
+@media (max-width: 420px) {
+  .sim-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.sim-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sim-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.sim-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.95rem;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.sim-input:focus {
+  outline: none;
+  border-color: rgba(59, 130, 246, 0.55);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+.sim-field-check {
+  justify-content: flex-end;
+}
+
+.sim-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--text);
+  cursor: pointer;
+  padding: 8px 0;
+}
+
+.sim-toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent, #3b82f6);
+}
+
+.sim-results {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sim-empty {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  padding: 12px 0;
+}
+
+.sim-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+@media (max-width: 520px) {
+  .sim-metrics {
+    grid-template-columns: 1fr;
+  }
+}
+
+.sim-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  background: var(--bg-elevated);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.sim-metric-k {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
+.sim-metric-v {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.sim-metric-v.up {
+  color: #26a69a;
+}
+
+.sim-metric-v.down {
+  color: #ef5350;
+}
+
+.sim-scenarios {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sim-scenario {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 0.82rem;
+  border: 1px solid var(--border);
+}
+
+.sim-scenario-bull {
+  background: rgba(38, 166, 154, 0.08);
+  border-color: rgba(38, 166, 154, 0.2);
+}
+
+.sim-scenario-bear {
+  background: rgba(239, 83, 80, 0.08);
+  border-color: rgba(239, 83, 80, 0.2);
+}
+
+.sim-scenario-neutral {
+  background: rgba(148, 163, 184, 0.06);
+}
+
+.sim-scenario-label {
+  font-weight: 600;
+  color: var(--text);
+  min-width: 5.5em;
+}
+
+.sim-scenario-text strong.up {
+  color: #26a69a;
+}
+
+.sim-scenario-text strong.down {
+  color: #ef5350;
+}
+
+.sim-ai-comment {
+  padding: 12px 14px;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(99, 102, 241, 0.06));
+  border-radius: 10px;
+  border: 1px solid rgba(59, 130, 246, 0.15);
+}
+
+.sim-ai-label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--accent, #60a5fa);
+  margin-bottom: 6px;
+}
+
+.sim-ai-comment p {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.sim-disclaimer {
+  margin: 12px 0 0;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}

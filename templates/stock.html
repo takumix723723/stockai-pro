@@ -13,7 +13,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/static/icons/apple-touch-icon.png">
   <link rel="manifest" href="/manifest.json">
   <title>{{ symbol }} - StockAI Pro</title>
-  <link rel="stylesheet" href="/static/style.css?v=39">
+  <link rel="stylesheet" href="/static/style.css?v=42">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
@@ -74,6 +74,13 @@
       <div id="chartContainer" class="stock-chart-container"></div>
       <div class="chart-loading" id="chartLoading">チャート読み込み中...</div>
       <div class="chart-error" id="chartError" style="display: none;"></div>
+    </section>
+
+    <section class="section-block trade-simulator-section">
+      <h2 class="section-title">📊 売買シミュレーター</h2>
+      <div class="trade-simulator-card card-premium" id="tradeSimulatorHost">
+        <div id="tradeSimulator"></div>
+      </div>
     </section>
 
     <nav class="stock-subtabs" id="stockSubtabs">
@@ -138,8 +145,9 @@
     </section>
   </main>
 
-  <script src="/static/script.js?v=39"></script>
-  <script src="/static/stock-chart-periods.js?v=39"></script>
+  <script src="/static/script.js?v=42"></script>
+  <script src="/static/stock-chart-periods.js?v=42"></script>
+  <script src="/static/stock-simulator.js?v=42"></script>
 <script>
     const SYMBOL = {{ symbol|tojson }};
     const MA_COLORS = {
@@ -251,6 +259,8 @@
       document.querySelectorAll('.stock-subtab').forEach((btn) => {
         btn.addEventListener('click', () => switchStockSubtab(btn.dataset.subtab));
       });
+
+      if (window.StockSimulator) StockSimulator.mount(SYMBOL);
 
       loadStock();
       loadChart(currentPeriod);
@@ -570,6 +580,10 @@
 
       if (!silent) {
         setLiveSyncStatus('stockLiveSync', formatLiveTime());
+      }
+
+      if (window.StockSimulator && d.current != null) {
+        StockSimulator.setCurrentPrice(d.current);
       }
     }
 
