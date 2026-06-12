@@ -2562,6 +2562,287 @@ def api_fund_screener():
     return _json_cached("fund_screener", CACHE_TTL_FUND, build)
 
 
+SCENARIO_SCAN_LIMIT = 28
+SCENARIO_RESULT_LIMIT = 10
+
+
+def _symbol_theme_names(symbol: str) -> list[str]:
+    return [t["name"] for t in THEME_CATALOG.values() if symbol in t.get("symbols", [])]
+
+
+def _default_scenario_shares(buy_price: float) -> int:
+    if not buy_price or buy_price <= 0:
+        return 100
+    lots = max(1, round(300_000 / buy_price / 100))
+    return lots * 100
+
+
+def _build_scenario_levels(
+    current: float,
+    change_pct: float | None,
+    rsi: float | None,
+    verdict: str,
+) -> dict:
+    buy = round(current)
+    if verdict == "反発狙い" or (rsi is not None and rsi < 35):
+        target_pct, stop_pct = 5.0, -2.5
+    elif change_pct is not None and change_pct < -3:
+        target_pct, stop_pct = 4.5, -3.0
+    elif change_pct is not None and change_pct > 3:
+        target_pct, stop_pct = 3.5, -2.0
+    else:
+        target_pct, stop_pct = 3.0, -2.5
+
+    target = round(buy * (1 + target_pct / 100))
+    stop = round(buy * (1 + stop_pct / 100))
+    shares = _default_scenario_shares(buy)
+    capital = buy * shares
+    expected_profit = (target - buy) * shares
+    expected_loss = (stop - buy) * shares
+    rr = (
+        round(expected_profit / abs(expected_loss), 2)
+        if expected_loss < 0 and expected_profit > 0
+        else None
+    )
+    return {
+        "buy_price": buy,
+        "target_price": target,
+        "stop_price": stop,
+        "shares": shares,
+        "capital": capital,
+        "expected_profit": expected_profit,
+        "expected_loss": expected_loss,
+        "risk_reward": rr,
+        "target_pct": round(target_pct, 2),
+        "stop_pct": round(stop_pct, 2),
+    }
+
+
+def _score_trade_scenario(
+    change_pct: float | None,
+    ai_score: dict,
+    themes: list[str],
+    rsi: float | None,
+    risk_reward: float | None,
+    vol_ratio: float | None,
+) -> tuple[float, str, str]:
+    score = 0.0
+    reason_parts: list[str] = []
+    verdict = "中期狙い"
+
+    total = ai_score.get("total") or 50
+    if total >= 65:
+        score += 18
+        reason_parts.extend(ai_score.get("reasons", [])[:2])
+    elif total >= 55:
+        score += 10
+        if ai_score.get("reasons"):
+            reason_parts.append(ai_score["reasons"][0])
+
+    if change_pct is not None:
+        if change_pct >= 3:
+            score += 14
+            reason_parts.append("急騰局面")
+            verdict = "短期狙い"
+        elif change_pct <= -3:
+            score += 16
+            reason_parts.append("急落後のリバウンド候補")
+            verdict = "反発狙い"
+
+    if rsi is not None:
+        if rsi < 35:
+            score += 14
+            reason_parts.append("RSIが低く、反発狙い")
+            verdict = "反発狙い"
+        elif rsi > 72:
+            score += 6
+            reason_parts.append("RSI買われすぎ（慎重）")
+
+    if vol_ratio is not None and vol_ratio > 1.4:
+        score += 10
+        reason_parts.append("出来高増加")
+
+    if themes:
+        score += 8
+        reason_parts.append(f"{themes[0]}テーマ")
+
+    for tag in ai_score.get("reasons", []):
+        if "上昇トレンド" in tag:
+            score += 8
+            reason_parts.append("短期上昇トレンド")
+            verdict = "短期狙い"
+            break
+
+    if risk_reward is not None:
+        if risk_reward >= 1.8:
+            score += 12
+        elif risk_reward >= 1.2:
+            score += 6
+
+    deduped: list[str] = []
+    for r in reason_parts:
+        if r and r not in deduped:
+            deduped.append(r)
+    reason = "＋".join(deduped[:3]) if deduped else "ルールベーススコアで選定"
+    return score, reason, verdict
+
+
+def _collect_scenario_symbols() -> list[str]:
+    symbols: set[str] = {
+        "7203", "8035", "285A", "9984", "6758", "8058", "6525", "5401", "4063",
+    }
+    for theme in THEME_CATALOG.values():
+        symbols.update(theme.get("symbols", [])[:5])
+    try:
+        gainers, losers = fetch_live_ranking(6)
+        for row in gainers + losers:
+            symbols.add(str(row.get("symbol", "")).upper())
+    except Exception:
+        traceback.print_exc()
+    for sym in ["3854", "7246", "6141", "8053", "6526", "285A"]:
+        symbols.add(sym)
+    return [s for s in symbols if s][:SCENARIO_SCAN_LIMIT]
+
+
+def _analyze_trade_scenario(symbol: str) -> dict | None:
+    try:
+        ticker = get_ticker(symbol)
+        info = enrich_fundamentals(get_ticker_info(ticker), ticker, symbol)
+        hist = get_history_safe(ticker, period="3mo", interval="1d")
+        current = safe_val(info.get("currentPrice") or info.get("regularMarketPrice"))
+        if current is None and not hist.empty:
+            current = safe_val(hist["Close"].iloc[-1])
+        if current is None or current <= 0:
+            return None
+
+        prev = safe_val(info.get("previousClose"))
+        change_pct = None
+        if prev and prev != 0:
+            change_pct = round((current - prev) / prev * 100, 2)
+
+        ai_score = calc_ai_score(info, hist, symbol)
+        themes = _symbol_theme_names(symbol)
+
+        rsi = None
+        vol_ratio = None
+        if not hist.empty and len(hist) >= 20:
+            rsi = safe_val(calc_rsi(hist["Close"]).iloc[-1])
+            vol = hist["Volume"]
+            vol_mean = vol.rolling(20).mean()
+            if safe_val(vol.iloc[-1]) and safe_val(vol_mean.iloc[-1]):
+                vol_ratio = float(vol.iloc[-1]) / float(vol_mean.iloc[-1])
+
+        levels = _build_scenario_levels(current, change_pct, rsi, "中期狙い")
+        score, reason, verdict = _score_trade_scenario(
+            change_pct, ai_score, themes, rsi, levels.get("risk_reward"), vol_ratio
+        )
+        levels = _build_scenario_levels(current, change_pct, rsi, verdict)
+
+        if levels.get("risk_reward") is not None and levels["risk_reward"] < 1.0:
+            score -= 8
+
+        if score < 18:
+            return None
+
+        return {
+            "id": f"{symbol}-{datetime.now().strftime('%Y%m%d')}",
+            "symbol": symbol,
+            "name": resolve_japanese_name(symbol, info),
+            "current": current,
+            "change_pct": change_pct,
+            "ai_score": ai_score.get("total"),
+            "scenario_score": round(score, 1),
+            "buy_price": levels["buy_price"],
+            "shares": levels["shares"],
+            "capital": levels["capital"],
+            "target_price": levels["target_price"],
+            "stop_price": levels["stop_price"],
+            "expected_profit": levels["expected_profit"],
+            "expected_loss": levels["expected_loss"],
+            "risk_reward": levels["risk_reward"],
+            "verdict": verdict,
+            "reason": reason,
+            "themes": themes[:2],
+        }
+    except Exception:
+        traceback.print_exc()
+        return None
+
+
+def _build_trade_scenarios_payload() -> dict:
+    symbols = _collect_scenario_symbols()
+    rows: list[dict] = []
+    for sym in symbols:
+        row = _analyze_trade_scenario(sym)
+        if row:
+            rows.append(row)
+        time.sleep(0.04)
+    rows.sort(key=lambda x: (x.get("scenario_score", 0), x.get("risk_reward") or 0), reverse=True)
+    top = rows[:SCENARIO_RESULT_LIMIT]
+    present = {r["symbol"] for r in top}
+    for sym in ("7203", "8035", "285A"):
+        if sym in present:
+            continue
+        anchor = _analyze_trade_scenario(sym)
+        if not anchor:
+            continue
+        if len(top) >= SCENARIO_RESULT_LIMIT:
+            top = top[:-1] + [anchor]
+        else:
+            top.append(anchor)
+        present.add(sym)
+    top.sort(key=lambda x: (x.get("scenario_score", 0), x.get("risk_reward") or 0), reverse=True)
+    return {
+        "status": "ok",
+        "scenarios": top[:SCENARIO_RESULT_LIMIT],
+        "scanned": len(symbols),
+        "generated_at": datetime.now().isoformat(),
+        "disclaimer": "※これは売買推奨ではなく、株価データに基づく損益シミュレーションです。実際の投資判断は自己責任で行ってください。",
+    }
+
+
+@app.route("/api/trade_scenarios")
+def api_trade_scenarios():
+    """AI売買シナリオ候補（ルールベース・スコアリング）"""
+    return _json_cached("trade_scenarios_v1", CACHE_TTL_RANKING, _build_trade_scenarios_payload)
+
+
+@app.route("/api/trade_scenarios/track", methods=["POST"])
+def api_trade_scenarios_track():
+    """保存シナリオの損益追跡用・現在値一括取得"""
+    body = request.get_json(silent=True) or {}
+    symbols = body.get("symbols") or []
+    if not isinstance(symbols, list):
+        return jsonify({"status": "error", "message": "symbols must be a list"}), 400
+
+    quotes: dict[str, dict] = {}
+    for raw in symbols[:40]:
+        sym = str(raw).strip().upper()
+        if not sym:
+            continue
+        try:
+            ticker = get_ticker(sym)
+            info = enrich_fundamentals(get_ticker_info(ticker), ticker, sym)
+            hist = get_history_safe(ticker, period="5d", interval="1d")
+            current = safe_val(info.get("currentPrice") or info.get("regularMarketPrice"))
+            if current is None and not hist.empty:
+                current = safe_val(hist["Close"].iloc[-1])
+            quotes[sym] = {
+                "symbol": sym,
+                "name": resolve_japanese_name(sym, info),
+                "current": current,
+            }
+        except Exception:
+            quotes[sym] = {"symbol": sym, "name": sym, "current": None}
+        time.sleep(0.03)
+
+    return jsonify({
+        "status": "ok",
+        "quotes": quotes,
+        "updated_at": datetime.now().isoformat(),
+    })
+
+
 @app.route("/api/notifications")
 def api_notifications():
     """通知一覧"""

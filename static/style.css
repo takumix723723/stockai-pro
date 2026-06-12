@@ -4600,3 +4600,232 @@ body.main-tab-ipo .ipo-page-embed .ipo-page-head {
   color: var(--text-muted);
   line-height: 1.45;
 }
+
+/* ===== AI売買シナリオ ===== */
+.section-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.section-link-btn {
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  background: rgba(59, 130, 246, 0.1);
+  color: var(--accent, #60a5fa);
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 6px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.section-sub {
+  margin: -4px 0 10px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.ai-scenario-home-preview,
+.ai-scenario-panel .ai-scenario-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.ai-scenario-card,
+.ai-scenario-history-card {
+  padding: 12px 14px;
+}
+
+.ai-scenario-head,
+.ai-scenario-history-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+  margin-bottom: 10px;
+}
+
+.ai-scenario-symbol {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--accent, #60a5fa);
+  text-decoration: none;
+}
+
+.ai-scenario-name {
+  font-size: 0.82rem;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+}
+
+.ai-scenario-verdict {
+  font-size: 0.68rem;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(99, 102, 241, 0.15);
+  color: #a5b4fc;
+  font-weight: 600;
+}
+
+.ai-scenario-status {
+  font-size: 0.68rem;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.ai-scenario-status.up {
+  background: rgba(38, 166, 154, 0.15);
+  color: #26a69a;
+}
+
+.ai-scenario-status.down {
+  background: rgba(239, 83, 80, 0.15);
+  color: #ef5350;
+}
+
+.ai-scenario-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 10px;
+}
+
+.ai-scenario-kv {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 0.72rem;
+}
+
+.ai-scenario-kv span {
+  color: var(--text-muted);
+}
+
+.ai-scenario-kv strong {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.82rem;
+}
+
+.ai-scenario-kv strong.up {
+  color: #26a69a;
+}
+
+.ai-scenario-kv strong.down {
+  color: #ef5350;
+}
+
+.ai-scenario-rr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 10px 0 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  font-size: 0.75rem;
+}
+
+.ai-scenario-rr-val {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1rem;
+  color: #fbbf24;
+}
+
+.ai-scenario-reason {
+  margin: 0 0 10px;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.ai-scenario-result-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--accent, #60a5fa);
+  margin-bottom: 8px;
+}
+
+.ai-scenario-status-note {
+  margin: 0 0 8px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.ai-scenario-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ai-scenario-btn {
+  flex: 1;
+  min-width: 88px;
+  text-align: center;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.ai-scenario-save {
+  background: rgba(38, 166, 154, 0.12);
+  border-color: rgba(38, 166, 154, 0.35);
+  color: #26a69a;
+}
+
+.ai-scenario-link {
+  color: var(--accent, #60a5fa);
+}
+
+.ai-scenario-disclaimer {
+  margin: 10px 0 0;
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.ai-scenario-empty,
+.ai-scenario-loading {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  padding: 16px 8px;
+}
+
+.ai-scenario-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.ai-scenario-tab {
+  flex: 1;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ai-scenario-tab.active {
+  border-color: rgba(59, 130, 246, 0.45);
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--accent, #60a5fa);
+}

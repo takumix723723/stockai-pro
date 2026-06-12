@@ -13,7 +13,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/static/icons/apple-touch-icon.png">
   <link rel="manifest" href="/manifest.json">
   <title>StockAI Pro - 日本株分析</title>
-  <link rel="stylesheet" href="/static/style.css?v=37">
+  <link rel="stylesheet" href="/static/style.css?v=43">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 </head>
@@ -121,11 +121,25 @@
         <span class="home-menu-label">市場AI分析</span>
         <span class="home-menu-desc">指数・テーマ総合</span>
       </button>
+      <button type="button" class="home-menu-card" data-panel="scenarios">
+        <span class="home-menu-icon">🎯</span>
+        <span class="home-menu-label">AI売買シナリオ</span>
+        <span class="home-menu-desc">今日の売買候補</span>
+      </button>
       <a href="#" class="home-menu-card home-menu-link" id="homeIpoMenuLink" data-tab-nav="ipo">
         <span class="home-menu-icon">🆕</span>
         <span class="home-menu-label">IPO・PO</span>
         <span class="home-menu-desc">新規公開・売出</span>
       </a>
+    </div>
+
+    <div class="section-title-row">
+      <div class="section-title">🎯 AI売買シナリオ</div>
+      <button type="button" class="section-link-btn" id="openScenariosPanel">今日の候補・履歴</button>
+    </div>
+    <p class="section-sub">ルールベースで全銘柄から売買候補を抽出（シミュレーション）</p>
+    <div class="ai-scenario-home-preview" id="aiScenarioHomePreview">
+      <div class="skeleton-list"><div class="skeleton-card"></div><div class="skeleton-card"></div></div>
     </div>
 
     <div class="section-title">🤖 市場AI要約</div>
@@ -187,10 +201,11 @@
     </a>
   </nav>
 
-  <script src="/static/watchlist.js?v=41"></script>
-  <script src="/static/theme.js?v=41"></script>
-  <script src="/static/ipo.js?v=41"></script>
-  <script src="/static/script.js?v=41"></script>
+  <script src="/static/watchlist.js?v=43"></script>
+  <script src="/static/theme.js?v=43"></script>
+  <script src="/static/ipo.js?v=43"></script>
+  <script src="/static/trade-scenarios.js?v=43"></script>
+  <script src="/static/script.js?v=43"></script>
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       initIndex();
@@ -198,8 +213,8 @@
 
     const tabLoaded = { home: false, watchlist: false, ranking: false, ipo: false };
     const tabLoading = { home: false, watchlist: false, ranking: false, ipo: false };
-    const panelLoaded = { buried: false, fund: false, market: false };
-    const panelLoading = { buried: false, fund: false, market: false };
+    const panelLoaded = { buried: false, fund: false, market: false, scenarios: false };
+    const panelLoading = { buried: false, fund: false, market: false, scenarios: false };
     let notifLoaded = false;
     let currentMainTab = 'home';
     let activeSubPanel = null;
@@ -272,6 +287,13 @@
         desc: '指数・テーマ・AI要約をまとめて確認',
         bodyClass: 'market-ai-content',
         listId: 'marketAiContent',
+      },
+      scenarios: {
+        title: 'AI売買シナリオ',
+        icon: '🎯',
+        desc: '全銘柄から抽出した売買候補と、保存シナリオの損益追跡',
+        bodyClass: 'ai-scenario-panel',
+        listId: 'aiScenarioList',
       },
     };
 
@@ -400,6 +422,8 @@
         e.preventDefault();
         switchTab('ipo');
       });
+
+      document.getElementById('openScenariosPanel')?.addEventListener('click', () => openSubPanel('scenarios'));
 
       document.getElementById('notifToggle').addEventListener('click', toggleNotifPanel);
       document.getElementById('notifClose').addEventListener('click', closeNotifPanel);
@@ -708,7 +732,9 @@
       if (name === 'buried') loadBuried().finally(done);
       else if (name === 'fund') loadFund().finally(done);
       else if (name === 'market') loadMarketAi().finally(done);
-      else panelLoading[name] = false;
+      else if (name === 'scenarios') {
+        window.TradeScenarios?.loadPanel('aiScenarioList', 'candidates').finally(done);
+      } else panelLoading[name] = false;
     }
 
     function ensureNotifications() {
@@ -856,6 +882,9 @@
           <div class="ai-summary-text">${escapeHtml(data.summary)}</div>
         `;
         resetAutoRetry('homeContent');
+        if (window.TradeScenarios) {
+          await TradeScenarios.initHomePreview();
+        }
         return true;
       } catch (e) {
         console.error(e);
